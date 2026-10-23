@@ -14,21 +14,30 @@ const MILESTONES = [7, 30, 100, 200, 365];
 const KEY = 'si-data-v1';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const DOW_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+// every question belongs to a group: 'Day' (general) or one of the five categories
+const GROUPS = ['Day', ...CATS];
 const REFLECTION = [
-  { id: 'mood', q: 'How is your mood today?', type: 'emoji' },
-  { id: 'energy', q: 'How was your energy?', type: 'emoji' },
-  { id: 'sleep', q: 'How did you sleep last night?', type: 'abc', opts: ['Great (7h or more)', 'Okay (5 to 7h)', 'Bad (under 5h)'] },
-  { id: 'rested', q: 'How rested do you feel right now?', type: 'slider', lo: 'Exhausted', hi: 'Fully rested' },
-  { id: 'calm', q: 'How calm and relaxed did you feel?', type: 'emoji' },
-  { id: 'motivation', q: 'How motivated were you today?', type: 'slider', lo: 'No drive', hi: 'Unstoppable' },
-  { id: 'focus', q: 'How was your focus?', type: 'abc', opts: ['Sharp', 'Average', 'Scattered'] },
-  { id: 'perf', q: 'How do you rate your performance today?', type: 'emoji' },
-  { id: 'progress', q: 'How much progress did you make on your goals?', type: 'slider', lo: 'None', hi: 'A lot' },
-  { id: 'body', q: 'How does your body feel (soreness, health)?', type: 'slider', lo: 'Bad', hi: 'Great' },
-  { id: 'diet', q: 'How did you eat today?', type: 'abc', opts: ['Healthy', 'Okay', 'Poor'] },
-  { id: 'phone', q: 'How much did your phone distract you?', type: 'abc', opts: ['Barely', 'Some', 'A lot'] },
-  { id: 'social', q: 'How did you feel around people?', type: 'abc', opts: ['Connected', 'Neutral', 'Withdrawn'] },
-  { id: 'satisfaction', q: 'How satisfied are you with your day overall?', type: 'slider', lo: 'Not at all', hi: 'Very' },
+  { id: 'mood', cat: 'Day', label: 'Mood', q: 'How is your mood today?', type: 'emoji' },
+  { id: 'energy', cat: 'Day', label: 'Energy', q: 'How was your energy?', type: 'emoji' },
+  { id: 'sleep', cat: 'Day', label: 'Sleep', q: 'How did you sleep last night?', type: 'abc', opts: ['Great (7h or more)', 'Okay (5 to 7h)', 'Bad (under 5h)'] },
+  { id: 'calm', cat: 'Day', label: 'Calm', q: 'How calm and relaxed did you feel?', type: 'emoji' },
+  { id: 'motivation', cat: 'Day', label: 'Motivation', q: 'How motivated were you today?', type: 'slider', lo: 'No drive', hi: 'Unstoppable' },
+  { id: 'satisfaction', cat: 'Day', label: 'Satisfaction', q: 'How satisfied are you with your day overall?', type: 'slider', lo: 'Not at all', hi: 'Very' },
+  { id: 'body', cat: 'Physique', label: 'Body feeling', q: 'How does your body feel (soreness, health)?', type: 'slider', lo: 'Bad', hi: 'Great' },
+  { id: 'training', cat: 'Physique', label: 'Activity', q: 'How was your physical activity today?', type: 'abc', opts: ['Strong session', 'Light movement', 'Almost none'] },
+  { id: 'diet', cat: 'Physique', label: 'Diet', q: 'How did you eat today?', type: 'abc', opts: ['Healthy', 'Okay', 'Poor'] },
+  { id: 'moneywork', cat: 'Money', label: 'Income work', q: 'How productive were you on making money?', type: 'slider', lo: 'Not at all', hi: 'Very productive' },
+  { id: 'spend', cat: 'Money', label: 'Spending', q: 'How was your spending today?', type: 'abc', opts: ['On plan', 'A few extras', 'Overspent'] },
+  { id: 'moneyconf', cat: 'Money', label: 'Money outlook', q: 'How confident do you feel about your money progress?', type: 'slider', lo: 'Worried', hi: 'Confident' },
+  { id: 'social', cat: 'Social', label: 'Connection', q: 'How did you feel around people?', type: 'abc', opts: ['Connected', 'Neutral', 'Withdrawn'] },
+  { id: 'convo', cat: 'Social', label: 'Conversations', q: 'How good were your conversations today?', type: 'slider', lo: 'Awkward', hi: 'Great' },
+  { id: 'reach', cat: 'Social', label: 'Reaching out', q: 'Did you reach out to or help someone?', type: 'abc', opts: ['Yes, more than once', 'Once', 'No'] },
+  { id: 'learn', cat: 'Knowledge', label: 'Learning', q: 'How much did you learn today?', type: 'slider', lo: 'Nothing', hi: 'A lot' },
+  { id: 'focus', cat: 'Knowledge', label: 'Focus', q: 'How was your focus?', type: 'abc', opts: ['Sharp', 'Average', 'Scattered'] },
+  { id: 'deep', cat: 'Knowledge', label: 'Deep work', q: 'How much deep work did you do?', type: 'abc', opts: ['2 hours or more', 'Under 2 hours', 'None'] },
+  { id: 'lookconf', cat: 'Looks', label: 'Confidence', q: 'How confident did you feel about how you looked?', type: 'slider', lo: 'Not at all', hi: 'Very' },
+  { id: 'groom', cat: 'Looks', label: 'Care routine', q: 'Did you do your grooming and skincare routine?', type: 'abc', opts: ['Fully', 'Partly', 'Skipped'] },
+  { id: 'posture', cat: 'Looks', label: 'Posture', q: 'How was your posture and body language?', type: 'abc', opts: ['Strong', 'Okay', 'Slouched'] },
 ];
 const EMOJI = ['😞', '😕', '😐', '🙂', '😄'];
 
@@ -244,7 +253,7 @@ function viewToday(v) {
     <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
     ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
     <h2>Day reflection</h2>
-    <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '14 quick taps and sliders, no typing'}</div></div>
+    <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
 `;
 }
@@ -373,7 +382,7 @@ function sourceSheet(sr) {
 
 
 /* ---------- reflection insights ---------- */
-const METRICS = [['mood', 'Mood'], ['energy', 'Energy'], ['sleep', 'Sleep'], ['rested', 'Rested'], ['calm', 'Calm'], ['motivation', 'Motivation'], ['focus', 'Focus'], ['perf', 'Performance'], ['progress', 'Progress'], ['body', 'Body'], ['diet', 'Diet'], ['phone', 'Phone use'], ['social', 'Social'], ['satisfaction', 'Satisfaction']];
+const METRICS = REFLECTION.map(q => [q.id, q.label]);
 const mLabel = id => (METRICS.find(m => m[0] === id) || [0, id])[1];
 // every answer becomes a score from 0 (worst) to 4 (best); A/B/C answers map to 4, 2, 0
 function rScore(r, id) {
@@ -383,14 +392,24 @@ function rScore(r, id) {
   if (q && q.type === 'slider') return r[id] / 10 * 4;
   return r[id];
 }
-function rOverall(r) {
-  const v = METRICS.map(m => rScore(r, m[0])).filter(x => x !== null);
-  return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length / 4 * 100) : null;
+// rating of one group (0 to 100): average of its answered questions
+function rGroup(r, g) {
+  const v = REFLECTION.filter(q => q.cat === g).map(q => rScore(r, q.id)).filter(x => x !== null);
+  return v.length ? Math.round(mean(v) / 4 * 100) : null;
 }
-const reflDates = () => Object.keys(S.reflections).sort();
+// overall day score: every group (Day + 5 categories) counts equally
+function rOverall(r) {
+  const v = GROUPS.map(g => rGroup(r, g)).filter(x => x !== null);
+  return v.length ? Math.round(mean(v)) : null;
+}
 const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+const reflDates = () => Object.keys(S.reflections).sort();
 function periodAvg(from, to, id) {
   const v = reflDates().filter(d => d >= from && d <= to).map(d => id ? rScore(S.reflections[d], id) : rOverall(S.reflections[d])).filter(x => x !== null);
+  return v.length ? mean(v) : null;
+}
+function periodGroup(from, to, g) {
+  const v = reflDates().filter(d => d >= from && d <= to).map(d => rGroup(S.reflections[d], g)).filter(x => x !== null);
   return v.length ? mean(v) : null;
 }
 function computeInsights() {
@@ -412,6 +431,22 @@ function computeInsights() {
     });
     if (best && Math.abs(best.diff) >= .5) out.push({ w: Math.abs(best.diff), text: `On days you did <b>${esc(h.name)}</b>, your ${mLabel(best.id).toLowerCase()} was ${best.diff > 0 ? 'higher' : 'lower'} by ${Math.abs(best.diff).toFixed(1)} of 4 points (${yes.length} days vs ${no.length}).`, good: best.diff > 0 });
   });
+  // does finishing a category's habits show up in that category's rating?
+  CATS.forEach(c => {
+    const hs = S.habits.filter(h => h.cat === c);
+    if (!hs.length) return;
+    const full = [], part = [];
+    dates.forEach(d => {
+      const due = hs.filter(h => habitDue(h, d));
+      const g = rGroup(S.reflections[d], c);
+      if (!due.length || g === null) return;
+      (due.every(h => isDone(h, d) || isRest(h, d)) ? full : part).push(g);
+    });
+    if (full.length >= 3 && part.length >= 3) {
+      const diff = mean(full) - mean(part);
+      if (Math.abs(diff) >= 10) out.push({ w: Math.abs(diff) / 25, text: `On days you finished all your <b>${c}</b> habits, your ${c} rating was ${Math.round(Math.abs(diff))} points ${diff > 0 ? 'higher' : 'lower'} (${full.length} vs ${part.length} days).`, good: diff > 0 });
+    }
+  });
   // water goal vs mood and energy
   const wy = dates.filter(d => (S.water.log[d] || 0) >= S.water.goal), wn = dates.filter(d => (S.water.log[d] || 0) < S.water.goal);
   if (wy.length >= 3 && wn.length >= 3) {
@@ -423,7 +458,7 @@ function computeInsights() {
   const good = dates.filter(d => rScore(S.reflections[d], 'sleep') === 4), bad = dates.filter(d => { const x = rScore(S.reflections[d], 'sleep'); return x !== null && x < 4; });
   if (good.length >= 3 && bad.length >= 3) {
     let best = null;
-    ['focus', 'perf', 'mood', 'energy'].forEach(id => {
+    ['focus', 'learn', 'mood', 'energy'].forEach(id => {
       const a = good.map(d => rScore(S.reflections[d], id)).filter(x => x !== null), b = bad.map(d => rScore(S.reflections[d], id)).filter(x => x !== null);
       if (a.length < 3 || b.length < 3) return;
       const diff = mean(a) - mean(b);
@@ -452,17 +487,25 @@ function insightsHtml() {
   const series = days14.map(d => S.reflections[d] ? rOverall(S.reflections[d]) : null);
   const thisW = periodAvg(addDays(t, -6), t), lastW = periodAvg(addDays(t, -13), addDays(t, -7));
   const delta = thisW !== null && lastW !== null ? Math.round(thisW - lastW) : null;
-  const rows = METRICS.map(([id, label]) => {
-    const a = periodAvg(addDays(t, -6), t, id), b = periodAvg(addDays(t, -13), addDays(t, -7), id);
+  const grow = GROUPS.map(g => {
+    const a = periodGroup(addDays(t, -6), t, g), b = periodGroup(addDays(t, -13), addDays(t, -7), g);
     if (a === null) return '';
-    const dl = b === null ? '' : a - b > .15 ? `<em class="up">▲ ${(a - b).toFixed(1)}</em>` : a - b < -.15 ? `<em class="down">▼ ${(b - a).toFixed(1)}</em>` : '<em>steady</em>';
-    return `<div class="mrow"><span>${label}</span><div class="bar"><i style="width:${a / 4 * 100}%"></i></div><b>${a.toFixed(1)}</b>${dl}</div>`;
+    const col = g === 'Day' ? 'var(--accent)' : CATCOL[g];
+    return `<div class="mrow cat"><span><b class="dot" style="background:${col}"></b>${g === 'Day' ? 'Day' : g}</span><div class="bar"><i style="width:${a}%;background:${col}"></i></div><b>${Math.round(a)}</b>${b === null ? '<em></em>' : a - b > 3 ? `<em class="up">▲ ${Math.round(a - b)}</em>` : a - b < -3 ? `<em class="down">▼ ${Math.round(b - a)}</em>` : '<em>steady</em>'}</div>`;
+  }).join('');
+  const rows = GROUPS.map(g => {
+    const qs = REFLECTION.filter(q => q.cat === g).map(q => {
+      const a = periodAvg(addDays(t, -6), t, q.id);
+      return a === null ? '' : `<div class="mrow"><span>${q.label}</span><div class="bar"><i style="width:${a / 4 * 100}%"></i></div><b>${Math.round(a / 4 * 100)}</b><em></em></div>`;
+    }).join('');
+    return qs ? `<div class="meta" style="margin:12px 0 2px">${g}</div>${qs}` : '';
   }).join('');
   const ins = computeInsights();
   return `<div class="glass card"><div class="row"><div class="grow"><div class="meta">Wellbeing, last 7 days</div><div class="mval" style="font-size:44px;margin-top:4px">${thisW === null ? '–' : Math.round(thisW) + '%'}</div></div>
       ${delta === null ? '' : `<div class="${delta >= 0 ? 'up' : 'down'}" style="font-size:15px">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} pts vs last week</div>`}</div>
       ${spark(series)}<div class="meta" style="margin-top:6px">Last 14 days</div></div>
-    <div class="glass card"><div class="meta" style="margin-bottom:10px">Average per area (0 to 4, higher is better)</div>${rows}</div>
+    <div class="glass card"><div class="meta" style="margin-bottom:10px">Rating per area, last 7 days (0 to 100)</div>${grow}
+      <details><summary>All questions</summary>${rows}</details></div>
     <h2>What helps you <span>patterns</span></h2>
     ${ins === null ? `<div class="glass empty">Patterns unlock after 7 reflections (${dates.length} so far). Then the app compares your good and bad days with your habits.</div>`
       : ins.length ? ins.map(i => `<div class="glass card insight ${i.good === true ? 'pos' : i.good === false ? 'neg' : ''}">${i.text}</div>`).join('') + '<p class="hint">These are patterns in your own data, not proof of cause. More days make them more reliable.</p>'
@@ -473,16 +516,17 @@ function showSummary(d) {
   const avg = periodAvg(addDays(d, -14), addDays(d, -1));
   const ra = avg === null ? null : Math.round(avg);
   const cmp = ra === null ? 'This is your first score to compare against.' : o >= ra + 3 ? `Above your 14-day average of ${ra}%.` : o <= ra - 3 ? `Below your 14-day average of ${ra}%.` : `Right around your 14-day average of ${ra}%.`;
-  const vals = METRICS.map(([id, l]) => [l, rScore(r, id)]).filter(x => x[1] !== null);
-  const low = vals.slice().sort((a, b) => a[1] - b[1])[0], high = vals.slice().sort((a, b) => b[1] - a[1])[0];
+  const gs = GROUPS.map(g => [g, rGroup(r, g)]).filter(x => x[1] !== null);
+  const cs = gs.filter(x => x[0] !== 'Day');
+  const high = cs.slice().sort((a, b) => b[1] - a[1])[0], low = cs.slice().sort((a, b) => a[1] - b[1])[0];
   const ins = computeInsights();
   const tip = ins && ins.length ? ins[0].text : `Keep going: after ${Math.max(0, 7 - reflDates().length)} more reflection(s) the app shows which habits lift your mood.`;
   openSheet(`<h3>Day score</h3><div class="mval" style="font-size:64px;margin:6px 0">${o}%</div><div class="meta" style="font-size:14px">${cmp}</div>
-    <div class="facts"><div><span>Strongest today</span><b>${high[0]}</b></div><div><span>Weakest today</span><b>${low[0]}</b></div></div>
+    <div style="margin-top:14px">${gs.map(([g, v]) => { const col = g === 'Day' ? 'var(--accent)' : CATCOL[g]; return `<div class="mrow cat"><span><b class="dot" style="background:${col}"></b>${g}</span><div class="bar"><i style="width:${v}%;background:${col}"></i></div><b>${v}</b><em></em></div>`; }).join('')}</div>
+    ${high && low && high[0] !== low[0] ? `<div class="facts"><div><span>Strongest area</span><b>${high[0]}</b></div><div><span>Needs attention</span><b>${low[0]}</b></div></div>` : ''}
     <div class="desc" style="margin-top:12px">${tip}</div>
     <div class="actions"><button class="btn primary" data-act="closesheet">Close</button></div>`);
 }
-
 /* ---------- stats ---------- */
 function viewStats(v) {
   const t = today(), si = streakInfo();
@@ -549,7 +593,7 @@ function viewMore(v) {
     <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
       <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
       <input id="importfile" type="file" accept="application/json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 8</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 9</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -619,7 +663,7 @@ function reflectSheet() {
     <input type="range" id="rslider" min="0" max="10" step="1" value="${cur == null ? 5 : cur}" style="--p:${(cur == null ? 5 : cur) * 10}%" class="${cur == null ? 'untouched' : ''}">
     <div class="sllab"><span>${q.lo}</span><span>${q.hi}</span></div></div>`;
   const last = reflStep === REFLECTION.length - 1;
-  openSheet(`<div class="meta">Question ${reflStep + 1} of ${REFLECTION.length}</div><div class="bar" style="margin:8px 0 18px"><i style="width:${(reflStep + 1) / REFLECTION.length * 100}%"></i></div>
+  openSheet(`<div class="row" style="justify-content:space-between"><span class="chip" style="background:${q.cat === 'Day' ? 'var(--accent-soft)' : 'color-mix(in srgb,' + CATCOL[q.cat] + ' 25%,transparent)'};color:${q.cat === 'Day' ? 'var(--accent)' : CATCOL[q.cat]}">${q.cat === 'Day' ? 'Your day' : q.cat}</span><span class="meta">Question ${reflStep + 1} of ${REFLECTION.length}</span></div><div class="bar" style="margin:12px 0 18px"><i style="width:${(reflStep + 1) / REFLECTION.length * 100}%"></i></div>
     <h3>${q.q}</h3>${body}
     <div class="actions"><button class="btn" data-act="${reflStep ? 'rprev' : 'closesheet'}">${reflStep ? 'Back' : 'Cancel'}</button><button class="btn primary" data-act="rnext">${last ? 'Finish' : cur != null ? 'Next' : 'Skip'}</button></div>`);
 }
