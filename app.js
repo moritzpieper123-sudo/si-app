@@ -44,17 +44,27 @@ const EMOJI = ['😞', '😕', '😐', '🙂', '😄'];
 /* ---------- state ---------- */
 const defaults = () => ({
   habits: [], logs: {}, rests: {},
-  water: { goal: 2500, quick: [150, 250, 500], log: {} },
-  goals: [], reflections: {}, settings: { pin: null }, celebrated: {},
+  water: { goal: 2500, quick: [150, 250, 500], log: {}, hist: {} },
+  goals: [], reflections: {}, celebrated: {},
+  settings: { pin: null, dayStart: 0, sound: true, haptics: true, lockAfter: 30, lastExport: null },
   income: { goal: 1000, sources: [] },
 });
 let S = load();
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return Object.assign(defaults(), JSON.parse(raw));
+    if (raw) return merge(JSON.parse(raw));
   } catch (e) { /* storage blocked: start empty */ }
   return defaults();
+}
+// fill in anything an older save is missing, one level deep
+function merge(data) {
+  const d = defaults();
+  for (const k in d) {
+    if (data[k] === undefined) continue;
+    d[k] = d[k] && typeof d[k] === 'object' && !Array.isArray(d[k]) ? Object.assign(d[k], data[k]) : data[k];
+  }
+  return d;
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
 
@@ -65,14 +75,16 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const pad = n => String(n).padStart(2, '0');
 const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
-const today = () => fmt(new Date());
+// a "day" can start later than midnight (setting), so late-night logging still counts for the day before
+const today = () => { const d = new Date(); d.setHours(d.getHours() - (S.settings.dayStart || 0)); return fmt(d); };
 const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return fmt(d); };
 const dowMon = s => (parse(s).getDay() + 6) % 7; // Mon = 0
 const weekStart = s => addDays(s, -dowMon(s));
-const buzz = (n = 12) => { try { navigator.vibrate && navigator.vibrate(n); } catch (e) { /* unsupported on iOS */ } };
+const buzz = (n = 12) => { if (!S.settings.haptics) return; try { navigator.vibrate && navigator.vibrate(n); } catch (e) { /* unsupported on iOS */ } };
 
 let audioCtx;
 function tone(freq = 660, dur = .12, vol = .05) {
+  if (!S.settings.sound) return;
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -85,7 +97,8 @@ function tone(freq = 660, dur = .12, vol = .05) {
 }
 
 /* ---------- habit logic ---------- */
-const habitDue = (h, d) => d >= h.created && (!h.days || h.days.includes(dowMon(d)));
+const habitDue = (h, d) => d >= h.created && (!h.archived || d < h.archived) && (!h.days || h.days.includes(dowMon(d)));
+const isFuture = d => d > today();
 const isRest = (h, d) => (S.rests[d] || []).includes(h.id);
 const value = (h, d) => (S.logs[d] && S.logs[d][h.id]) || 0;
 const isMax = h => h.type === 'num' && h.mode === 'max';
@@ -124,6 +137,17 @@ function streakInfo(upTo = today()) {
   cur = run;
   return { cur, best };
 }
+// share of due days in the last 30 that were done or rested (null if the habit had no due days yet)
+function rate30(h) {
+  const t = today(); let due = 0, ok = 0;
+  for (let i = 0; i < 30; i++) {
+    const d = addDays(t, -i);
+    if (!habitDue(h, d)) continue;
+    if (i === 0 && !isDone(h, d) && !isRest(h, d)) continue; // today is still open
+    due++; if (isDone(h, d) || isRest(h, d)) ok++;
+  }
+  return due ? Math.round(ok / due * 100) : null;
+}
 function habitStreak(h) {
   let run = 0, best = 0;
   const t = today();
@@ -152,16 +176,39 @@ function renderTabs() {
   $('#tabs').innerHTML = TABS.map(([id, label]) =>
     `<button data-tab="${id}" aria-label="${label}" class="${tab === id ? 'on' : ''}">${IC[id]}</button>`).join('');
 }
+let lastTab = null, lastPop = null;
+const prevAnim = {};
 function go(t) { tab = t; render(); window.scrollTo({ top: 0 }); }
+// bars and rings are rebuilt on every render, so animate them from their previous value
+function runAnims() {
+  document.querySelectorAll('[data-key]').forEach(el => {
+    const key = el.dataset.key, to = el.dataset.to, from = prevAnim[key];
+    prevAnim[key] = to;
+    if (from === undefined || from === to) return;
+    const set = v => { if (el.dataset.prop === 'width') el.style.width = v + '%'; else el.style.strokeDashoffset = v; };
+    set(from); void el.getBoundingClientRect(); set(to);
+  });
+}
 function render() {
   renderTabs();
   const v = $('#view');
-  v.style.animation = 'none'; void v.offsetWidth; v.style.animation = '';
-  ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, income: viewIncome, stats: viewStats, more: viewMore })[tab](v);
+  const enter = tab !== lastTab; lastTab = tab;
+  try {
+    ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, income: viewIncome, stats: viewStats, more: viewMore })[tab](v);
+  } catch (err) {
+    v.innerHTML = `<h1>Something went wrong</h1><div class="glass card"><div class="meta">${esc(err.message)}</div><div class="actions"><button class="btn primary" data-act="export">Save backup</button><button class="btn" data-tab="today">Home</button></div></div>`;
+  }
+  v.classList.toggle('enter', enter);
+  if (enter) {
+    [...v.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 9)));
+    v.querySelectorAll('.tile,.goalcard,.card.flat').forEach((c, i) => c.style.setProperty('--j', Math.min(i, 8)));
+  }
   const hs = $('.heatscroll'); if (hs) hs.scrollLeft = hs.scrollWidth;
   v.insertAdjacentHTML('afterbegin', tab === 'more'
     ? `<button class="hbtn" data-tab="today" aria-label="Back"><svg viewBox="0 0 24 24" class="o"><path d="M15 5l-7 7 7 7"/></svg></button>`
     : `<button class="hbtn" data-tab="more" aria-label="Settings">${IC.gear}</button>`);
+  runAnims();
+  lastPop = null;
 }
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab]');
@@ -196,10 +243,11 @@ function heatHtml() {
 }
 
 /* ---------- today ---------- */
-function ring(pct, size = 96, color = 'var(--accent)') {
-  const r = 40, c = 2 * Math.PI * r;
-  return `<svg class="water-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="${r}" stroke="rgba(255,255,255,.1)"/><circle cx="50" cy="50" r="${r}" stroke="${color}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(1, pct))}" transform="rotate(-90 50 50)" style="transition:stroke-dashoffset .8s var(--ease)"/></svg>`;
+function ring(pct, key, color = 'var(--accent)') {
+  const r = 40, c = 2 * Math.PI * r, off = c * (1 - Math.min(1, pct));
+  return `<svg class="water-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="${r}" stroke="rgba(255,255,255,.1)"/><circle cx="50" cy="50" r="${r}" stroke="${color}" stroke-dasharray="${c}" stroke-dashoffset="${off}" transform="rotate(-90 50 50)" data-key="${key}" data-prop="offset" data-to="${off}" style="transition:stroke-dashoffset .9s var(--ease),stroke .5s"/></svg>`;
 }
+const barHtml = (key, pct, cls = '', style = '', fill = '') => `<div class="bar ${cls}" style="${style}"><i data-key="${key}" data-prop="width" data-to="${pct}" style="width:${pct}%;${fill ? 'background:' + fill : ''}"></i></div>`;
 function habitRow(h, d) {
   const done = isDone(h, d), rest = isRest(h, d) && !done, col = CATCOL[h.cat] || '#fff';
   const hs = habitStreak(h);
@@ -207,8 +255,8 @@ function habitRow(h, d) {
     ? `<button class="tcheck ${done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`
     : `<button class="tcheck ${done ? 'on' : rest ? 'rest' : ''} ${isOver(h, d) ? 'over' : ''}" data-act="${done ? 'noop' : 'inc'}" data-id="${h.id}">${done ? '✓' : rest ? '☾' : '+'}</button>`;
   const num = h.type === 'num' ? `<div class="tnum"><div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val" data-act="typeval" data-id="${h.id}">${value(h, d)}<small> / ${h.target} ${esc(h.unit)}</small></span><button data-act="inc" data-id="${h.id}">+</button></div>
-    <div class="bar ${isOver(h, d) ? 'red' : ''}" style="margin-top:8px"><i style="width:${Math.min(100, value(h, d) / h.target * 100)}%"></i></div></div>` : '';
-  return `<div class="tile ${done ? 'done' : ''}" style="--c:${col}">
+    ${barHtml('hb:' + h.id + d, Math.min(100, Math.round(value(h, d) / h.target * 100)), isOver(h, d) ? 'red' : '', 'margin-top:8px')}</div>` : '';
+  return `<div class="tile ${done ? 'done' : ''} ${lastPop === h.id ? 'pop' : ''} ${isFuture(d) ? 'future' : ''}" style="--c:${col}">
     <div class="ttop"><div class="ticon">${CATICON[h.cat] || ''}</div>${check}</div>
     <div class="tbody" data-act="detail" data-id="${h.id}"><div class="tname">${esc(h.name)}</div>
       <div class="tmeta">${hs.cur ? '🔥 ' + hs.cur + (hs.cur === 1 ? ' day' : ' days') : h.cat}${h.type === 'num' ? (isMax(h) ? ' · max' : '') : ''}${isOver(h, d) ? ' · <span style="color:#ff8a8a">over</span>' : ''}</div></div>${num}</div>`;
@@ -224,20 +272,23 @@ function detailSheet(h) {
     <div class="facts"><div><span>Schedule</span><b>${sched}</b></div>
       ${h.type === 'num' ? `<div><span>${isMax(h) ? 'Daily limit' : 'Daily goal'}</span><b>${h.target} ${esc(h.unit)}</b></div>` : ''}
       <div><span>Streak</span><b>🔥 ${hs.cur} (best ${hs.best})</b></div>
+      <div><span>Last 30 days</span><b>${rate30(h) === null ? '–' : rate30(h) + '%'}</b></div>
       ${h.restLimit ? `<div><span>Rest days left</span><b>${left} this ${h.restPer}</b></div>` : ''}</div>
-    <div class="actions">${h.restLimit ? `<button class="btn" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest day' : 'Take rest day'}</button>` : ''}<button class="btn" data-act="edit" data-id="${h.id}">Edit</button><button class="btn primary" data-act="closesheet">Close</button></div>`);
+    <div class="actions">${h.restLimit ? `<button class="btn" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest day' : 'Take rest day'}</button>` : ''}<button class="btn" data-act="edit" data-id="${h.id}">Edit</button></div>
+    <div class="actions"><button class="btn" data-act="archive" data-id="${h.id}">Archive</button><button class="btn primary" data-act="closesheet">Close</button></div>`);
 }
 function viewToday(v) {
   const d = selDay, isToday = d === today();
   const due = S.habits.filter(h => habitDue(h, d));
   const st = dayStats(d), si = streakInfo();
   const w = S.water.log[d] || 0, wp = w / S.water.goal;
+  const allDone = st.due > 0 && st.complete;
   const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening';
   const cats = ['All', ...CATS];
   const shown = due.filter(h => habitCat === 'All' || h.cat === habitCat);
   v.innerHTML = `
     <h1>${isToday ? greeting : parse(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
-    <p class="sub">${isToday ? parse(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '<a data-act="gotoday" style="color:var(--accent)">Back to today</a>'}</p>
+    <p class="sub">${isToday ? parse(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) + (allDone ? ' · <span style="color:var(--ok)">All done today ✓</span>' : '') : '<a data-act="gotoday" style="color:var(--accent)">Back to today</a>'}</p>
     <div class="hero">
       <div class="glass"><b>🔥 ${si.cur}</b><span>Day streak</span></div>
       <div class="glass"><b>${st.due ? Math.round(st.ratio * 100) : 0}%</b><span>Done</span></div>
@@ -245,10 +296,10 @@ function viewToday(v) {
     </div>
     <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Hydration</h2>
-    <div class="glass card"><div class="row">${ring(wp, 96, wp >= 1 ? 'var(--ok)' : 'var(--accent)')}
+    <div class="glass card"><div class="row">${ring(wp, 'water' + d, wp >= 1 ? 'var(--ok)' : 'var(--accent)')}
       <div class="grow"><div class="name" style="font-size:24px">${w} / ${S.water.goal} ml</div>
       <div class="meta">${wp >= 1 ? 'Goal reached 💧' : Math.max(0, S.water.goal - w) + ' ml to go'}</div></div></div>
-      <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="water" data-ml="-1">Undo</button></div></div>
+      <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="watercustom">Custom</button><button data-act="water" data-ml="-1">Undo</button></div></div>
     <h2>Habits <button class="btn small primary" data-act="newhabit">+ New</button></h2>
     <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
     ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
@@ -274,16 +325,17 @@ function viewCalendar(v) {
     }
     if (d === today()) cls += ' today';
     if (d === selDay) cls += ' sel';
+    if (isFuture(d)) cls += ' fut';
     cells += `<button class="${cls}" style="${style}" data-act="pick" data-d="${d}">${i}</button>`;
   }
   const sel = selDay, due = S.habits.filter(h => habitDue(h, sel));
   v.innerHTML = `
-    <div class="cal-head"><button data-act="prevm">‹</button><h1 style="margin:0;font-size:22px">${first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</h1><button data-act="nextm">›</button></div>
+    <div class="cal-head"><button data-act="prevm">‹</button><h1 data-act="calToday" style="cursor:pointer"  style="margin:0;font-size:22px">${first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</h1><button data-act="nextm">›</button></div>
     <div class="glass cal">${cells}</div>
     <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly done (brighter = more)</span><span><i style="background:var(--rest)"></i>Rest only</span></div>
     <h2>${parse(sel).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
     ${due.length ? tiles(due.map(h => habitRow(h, sel)).join('')) : '<div class="glass empty">No habits due on this day.</div>'}
-    <p class="hint">Tap a habit to tick it for any past day.</p>`;
+    <p class="hint">Tap a habit to tick it for any past day. Tap the month name to jump back to today.</p>`;
 }
 
 /* ---------- goals ---------- */
@@ -307,8 +359,9 @@ function viewGoals(v) {
       return `<div class="goalcard"><div class="grow" data-act="editgoal" data-id="${g.id}">
         <div class="gtitle">${esc(g.title)}</div>
         <div class="gpct">${pct}%${g.mode === 'num' ? `<small> ${g.progress}/${g.target} ${esc(g.unit || '')}</small>` : ''}</div>
-        <div class="bar" style="margin-top:12px"><i style="width:${pct}%"></i></div>
-        <div class="meta" style="margin-top:8px"><span class="chip">${g.cat}</span></div></div>
+        ${barHtml('gb:' + g.id, pct, g.done ? 'green' : '', 'margin-top:12px')}
+        ${g.desc ? `<div class="gdesc">${esc(g.desc)}</div>` : ''}
+        <div class="meta" style="margin-top:8px"><span class="chip" style="background:color-mix(in srgb,${CATCOL[g.cat]} 22%,transparent);color:${CATCOL[g.cat]}">${g.cat}</span></div></div>
         <div class="gside"><span style="color:${sc}">${status}</span><b>${left === null ? '' : left < 0 ? -left : left}</b><small>${left === null ? 'no deadline' : left < 0 ? 'days over' : 'days left'}</small></div>
         ${g.done ? '' : g.mode === 'num' ? `<div class="gbtns"><button class="sq" data-act="gdec" data-id="${g.id}">−</button><button class="sq on" data-act="ginc" data-id="${g.id}">+</button></div>` : `<button class="sq on gcheck" data-act="gdone" data-id="${g.id}">✓</button>`}</div>`;
     }).join('') : '<div class="empty">No goals here yet. Tap + to add one.</div>'}
@@ -566,7 +619,13 @@ function viewStats(v) {
     const r = S.reflections[d]; const m = r.mood;
     return { l: parse(d).toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 2), h: m == null ? 0 : (m + 1) * 20 };
   });
-  const perHabit = S.habits.map(h => ({ h, s: habitStreak(h) })).sort((a, b) => b.s.cur - a.s.cur);
+  const perHabit = S.habits.filter(h => !h.archived).map(h => ({ h, s: habitStreak(h), r: rate30(h) })).sort((a, b) => b.s.cur - a.s.cur);
+  const catRows = CATS.map(c => {
+    const rs = S.habits.filter(h => h.cat === c && !h.archived).map(rate30).filter(x => x !== null);
+    if (!rs.length) return '';
+    const v = Math.round(mean(rs));
+    return `<div class="mrow cat"><span><b class="dot" style="background:${CATCOL[c]}"></b>${c}</span>${barHtml('cr:' + c, v, '', '', CATCOL[c])}<b>${v}</b><em>%</em></div>`;
+  }).join('');
   v.innerHTML = `<h1>Stats</h1><p class="sub">Your progress at a glance.</p>
     <div class="hero"><div class="glass"><b>${weekPct}%</b><span>This week</span></div><div class="glass"><b>🔥 ${si.cur}</b><span>Streak</span></div><div class="glass"><b>${si.best}</b><span>Best streak</span></div></div>
     <h2>Insights <span>daily reflection</span></h2>${insightsHtml()}
@@ -574,33 +633,51 @@ function viewStats(v) {
     <h2>Monthly completion</h2>${bars(monthly.map(x => ({ l: x.label, h: x.r * 100 })))}
     <h2>Water per day</h2>${bars(last7.map(d => ({ l: DOW[dowMon(d)], h: (S.water.log[d] || 0) / maxW * 100 })), 'blue')}
     <h2>Consistency <span>last 30 days</span></h2><div class="cons">${cons}</div>
+    ${catRows ? `<h2>By category <span>last 30 days</span></h2><div class="glass card">${catRows}</div>` : ''}
     <h2>Habit streaks</h2>
-    ${perHabit.length ? perHabit.map(({ h, s }) => `<div class="glass card row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta"><span class="chip">${h.cat}</span>Best ${s.best}</div></div><b style="font-size:22px">🔥 ${s.cur}</b></div>`).join('') : '<div class="glass empty">Add habits to see streaks.</div>'}`;
+    ${perHabit.length ? perHabit.map(({ h, s, r }) => `<div class="card flat row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta"><span class="chip" style="background:color-mix(in srgb,${CATCOL[h.cat]} 22%,transparent);color:${CATCOL[h.cat]}">${h.cat}</span>Best ${s.best}${r === null ? '' : ' · ' + r + '% (30 days)'}</div></div><b style="font-size:22px">🔥 ${s.cur}</b></div>`).join('') : '<div class="glass empty">Add habits to see streaks.</div>'}`;
 }
 
 /* ---------- more / settings ---------- */
+const optSeg = (k, opts) => `<div class="seg">${opts.map(([val, label]) => `<button type="button" class="${String(S.settings[k]) === String(val) ? 'on' : ''}" data-act="setopt" data-k="${k}" data-v="${val}">${label}</button>`).join('')}</div>`;
 function viewMore(v) {
-  v.innerHTML = `<h1>More</h1><p class="sub">Settings, security and backup.</p>
-    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
+  const archived = S.habits.filter(h => h.archived);
+  const lastExp = S.settings.lastExport ? parse(S.settings.lastExport).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never';
+  v.innerHTML = `<h1>Settings</h1><p class="sub">Make the app fit your routine.</p>
     <h2>Hydration</h2>
     <div class="glass card"><label style="margin-top:0">Daily goal (ml)</label><input id="wgoal" type="number" inputmode="numeric" value="${S.water.goal}">
       <label>Quick-add amounts (ml, comma separated)</label><input id="wquick" value="${S.water.quick.join(', ')}">
       <div class="actions"><button class="btn primary" data-act="savewater">Save</button></div></div>
+    <h2>Your day</h2>
+    <div class="glass card"><label style="margin-top:0">A new day starts at</label>${optSeg('dayStart', [[0, 'Midnight'], [2, '2 am'], [4, '4 am'], [6, '6 am']])}
+      <p class="hint" style="margin:10px 0 0">Useful if you log after midnight. Until then, entries still count for the day before.</p></div>
+    <h2>Feel</h2>
+    <div class="glass card"><label style="margin-top:0">Sounds</label>${optSeg('sound', [[true, 'On'], [false, 'Off']])}
+      <label>Haptics</label>${optSeg('haptics', [[true, 'On'], [false, 'Off']])}
+      <p class="hint" style="margin:10px 0 0">iPhone web apps do not allow vibration, so haptics may do nothing.</p></div>
     <h2>Security</h2>
-    <div class="glass card row"><div class="grow"><div class="name">App lock</div><div class="meta">${S.settings.pin ? '4-digit code is on' : 'Off'}</div></div>
+    <div class="glass card"><div class="row"><div class="grow"><div class="name">App lock</div><div class="meta">${S.settings.pin ? '4-digit code is on' : 'Off'}</div></div>
       <button class="btn small" data-act="setpin">${S.settings.pin ? 'Change' : 'Set code'}</button>${S.settings.pin ? '<button class="btn small danger" data-act="rmpin">Remove</button>' : ''}</div>
+      ${S.settings.pin ? `<label>Lock again after leaving the app for</label>${optSeg('lockAfter', [[0, 'Right away'], [30, '30 sec'], [300, '5 min']])}` : ''}</div>
+    ${archived.length ? `<h2>Archived habits</h2>${archived.map(h => `<div class="card flat row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta">${h.cat}</div></div><button class="btn small" data-act="unarchive" data-id="${h.id}">Restore</button></div>`).join('')}` : ''}
     <h2>Backup</h2>
-    <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
-      <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
-      <input id="importfile" type="file" accept="application/json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 9</div></div>
+    <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. If you delete the app or clear Safari data, it is gone. Last backup: <b>${lastExp}</b>.</div>
+      <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
+      <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
+      <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.0</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
 
 /* ---------- modal helpers ---------- */
+let pendingAsk = null;
+function ask(title, text, yes, fn) {
+  pendingAsk = fn;
+  openSheet(`<h3>${title}</h3><div class="desc">${text}</div><div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn danger" data-act="askyes">${yes}</button></div>`);
+}
 function openSheet(html) {
-  $('#modal-root').innerHTML = `<div class="scrim" data-act="closesheet"><div class="glass sheet">${html}</div></div>`;
+  $('#modal-root').innerHTML = `<div class="scrim" data-act="closesheet"><div class="glass sheet"><div class="grab"></div>${html}</div></div>`;
 }
 function closeSheet() { $('#modal-root').innerHTML = ''; }
 function toast(msg) {
@@ -616,34 +693,56 @@ document.addEventListener('click', e => {
   if (seg.dataset.multi) b.classList.toggle('on');
   else { seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); }
   if (seg.dataset.seg === 'type') $('#numfields').style.display = b.dataset.v === 'num' ? 'block' : 'none';
+  if (seg.dataset.seg === 'unit') $('#hunit').value = '';
   if (seg.dataset.seg === 'gmode') $('#gnumfields').style.display = b.dataset.v === 'num' ? 'block' : 'none';
 });
 const segVal = n => { const b = $(`[data-seg="${n}"] button.on`); return b ? b.dataset.v : null; };
 const segVals = n => [...document.querySelectorAll(`[data-seg="${n}"] button.on`)].map(b => b.dataset.v);
 
-function habitSheet(h) {
+const HABIT_TEMPLATES = [
+  { name: 'Gym', cat: 'Physique', type: 'bool', desc: 'Mon: chest\nTue: back\nThu: legs\nFri: shoulders and arms' },
+  { name: 'Tennis', cat: 'Physique', type: 'bool' },
+  { name: 'Calories under', cat: 'Physique', type: 'num', mode: 'max', target: 2500, unit: 'kcal' },
+  { name: 'Protein', cat: 'Physique', type: 'num', target: 120, unit: 'g' },
+  { name: 'Steps', cat: 'Physique', type: 'num', target: 10000, unit: 'steps' },
+  { name: 'Post a video', cat: 'Money', type: 'bool' },
+  { name: 'Save money', cat: 'Money', type: 'num', target: 10, unit: '€' },
+  { name: 'Read', cat: 'Knowledge', type: 'num', target: 20, unit: 'min' },
+  { name: 'Learn English', cat: 'Knowledge', type: 'num', target: 15, unit: 'min' },
+  { name: 'Call a friend', cat: 'Social', type: 'bool' },
+  { name: 'Skincare', cat: 'Looks', type: 'bool' },
+];
+const UNITS = ['kcal', 'ml', 'l', 'reps', 'sets', 'min', 'h', 'km', 'steps', 'g', 'kg', '€', 'pages'];
+function habitSheet(h, isNew) {
+  const editing = h && !isNew;
   const nh = h || { name: '', cat: 'Physique', type: 'bool', unit: 'min', target: 30, days: null, restLimit: 0, restPer: 'week' };
   const dayList = nh.days || [0, 1, 2, 3, 4, 5, 6];
-  openSheet(`<h3>${h ? 'Edit habit' : 'New habit'}</h3>
+  const known = UNITS.includes(nh.unit);
+  openSheet(`<h3>${editing ? 'Edit habit' : 'New habit'}</h3>
+    ${editing ? '' : `<label style="margin-top:0">Quick start</label><div class="seg tpl">${HABIT_TEMPLATES.map((t, i) => `<button type="button" data-act="tpl" data-i="${i}">${esc(t.name)}</button>`).join('')}</div>`}
     <label>Name</label><input id="hname" value="${esc(nh.name)}" placeholder="e.g. Workout">
     <label>Category</label>${segHtml('cat', CATS.map(c => [c, c]), nh.cat)}
     <label>Type</label>${segHtml('type', [['bool', 'Yes / No'], ['num', 'Number']], nh.type)}
     <div id="numfields" style="display:${nh.type === 'num' ? 'block' : 'none'}">
       <label>Type of target</label>${segHtml('hmode', [['min', 'Reach at least'], ['max', 'Stay under']], nh.mode || 'min')}
       <label>Daily target</label><input id="htarget" type="number" inputmode="decimal" value="${nh.target}">
-      <label>Unit</label>${segHtml('unit', ['kcal', 'ml', 'l', 'reps', 'min', 'h', 'km', 'g', 'kg', 'pages'].map(u => [u, u]), nh.unit)}
+      <label>Unit</label>${segHtml('unit', UNITS.map(u => [u, u]), known ? nh.unit : '')}
+      <input id="hunit" value="${known ? '' : esc(nh.unit)}" placeholder="or type your own unit" style="margin-top:8px">
+      <label>Step size for + and − (optional)</label><input id="hstep" type="number" inputmode="decimal" value="${nh.step || ''}" placeholder="automatic">
     </div>
     <label>Description (optional)</label><textarea id="hdesc" rows="4" placeholder="e.g. Mon: chest, Tue: legs, Wed: back ...">${esc(nh.desc || '')}</textarea>
     <label>Days</label>${segHtml('days', DOW_NAMES.map((n, i) => [i, n]), dayList.map(String), true)}
-    <label>Rest days allowed (0 = none)</label><input id="hrest" type="number" inputmode="numeric" min="0" value="${nh.restLimit}">
-    <label>Per</label>${segHtml('restper', [['week', 'Week'], ['month', 'Month']], nh.restPer)}
-    <div class="actions">${h ? '<button class="btn danger" data-act="delhabit" data-id="' + h.id + '">Delete</button>' : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savehabit" data-id="${h ? h.id : ''}">Save</button></div>`);
+    <label>Rest days allowed (0 = none)</label><input id="hrest" type="number" inputmode="numeric" min="0" value="${nh.restLimit || 0}">
+    <label>Per</label>${segHtml('restper', [['week', 'Week'], ['month', 'Month']], nh.restPer || 'week')}
+    <label>Start date</label><input id="hstart" type="date" value="${editing ? nh.created : today()}" max="${today()}">
+    <div class="actions">${editing ? '<button class="btn danger" data-act="delhabit" data-id="' + h.id + '">Delete</button>' : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savehabit" data-id="${editing ? h.id : ''}">Save</button></div>`);
 }
 function goalSheet(g) {
-  const ng = g || { title: '', cat: 'Physique', deadline: '', mode: 'bool', target: 10, progress: 0, unit: '' };
+  const ng = g || { title: '', cat: 'Physique', deadline: '', mode: 'bool', target: 10, progress: 0, unit: '', desc: '' };
   openSheet(`<h3>${g ? 'Edit goal' : 'New goal'}</h3>
     <label>Goal</label><input id="gtitle" value="${esc(ng.title)}" placeholder="e.g. Post 30 videos">
     <label>Category</label>${segHtml('gcat', CATS.map(c => [c, c]), ng.cat)}
+    <label>Notes (optional)</label><textarea id="gdesc" rows="3" placeholder="Why it matters, the plan, steps ...">${esc(ng.desc || '')}</textarea>
     <label>Deadline</label><input id="gdead" type="date" value="${ng.deadline || ''}">
     <label>Progress</label>${segHtml('gmode', [['bool', 'Done / not done'], ['num', 'Counted']], ng.mode)}
     <div id="gnumfields" style="display:${ng.mode === 'num' ? 'block' : 'none'}">
@@ -709,20 +808,35 @@ function checkMilestone() {
 }
 
 /* ---------- actions ---------- */
+function addWater(d, ml) {
+  const cur = S.water.log[d] || 0, hist = S.water.hist[d] = S.water.hist[d] || [];
+  if (ml < 0) {
+    const last = hist.pop();
+    S.water.log[d] = Math.max(0, cur - (last === undefined ? cur : last));
+  } else { hist.push(ml); S.water.log[d] = cur + ml; }
+  if (ml > 0 && cur < S.water.goal && cur + ml >= S.water.goal) celebrate('💧 Water goal reached!');
+  buzz(); tone(480, .1); save(); render();
+}
 function setLog(h, d, val) {
   (S.logs[d] = S.logs[d] || {})[h.id] = Math.max(0, val);
   if (S.rests[d]) S.rests[d] = S.rests[d].filter(x => x !== h.id);
 }
-function numStep(h) { return h.unit === 'kcal' ? 50 : h.unit === 'ml' ? 100 : h.unit === 'min' ? 5 : h.unit === 'g' ? 10 : 1; }
+function numStep(h) { return h.step || ({ kcal: 50, ml: 100, min: 5, g: 10, steps: 500, '€': 5 })[h.unit] || 1; }
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
   const h = S.habits.find(x => x.id === id), g = S.goals.find(x => x.id === id);
-  const d = tab === 'calendar' ? selDay : selDay;
+  const d = selDay;
   switch (a) {
-    case 'toggle': setLog(h, d, isDone(h, d) ? 0 : 1); buzz(); tone(isDone(h, d) ? 740 : 520, .09); save(); render(); checkMilestone(); break;
-    case 'inc': setLog(h, d, value(h, d) + numStep(h)); buzz(6); save(); render(); checkMilestone(); break;
+    case 'toggle': case 'inc': case 'dec': case 'typeval': case 'rest':
+      if (isFuture(d)) { toast('You cannot log the future'); return; }
+      /* falls through to the real handlers below */
+    default: break;
+  }
+  switch (a) {
+    case 'toggle': { const was = isDone(h, d); setLog(h, d, was ? 0 : 1); buzz(); tone(was ? 420 : 620, .09); if (!was) lastPop = h.id; save(); render(); checkMilestone(); break; }
+    case 'inc': { const was = isDone(h, d); setLog(h, d, value(h, d) + numStep(h)); buzz(6); if (!was && isDone(h, d)) lastPop = h.id; save(); render(); checkMilestone(); break; }
     case 'dec': setLog(h, d, value(h, d) - numStep(h)); buzz(6); save(); render(); break;
     case 'rest': {
       const r = S.rests[d] = S.rests[d] || [];
@@ -735,7 +849,7 @@ document.addEventListener('click', e => {
       openSheet(`<h3>${esc(h.name)}</h3><label>Value for this day (${esc(h.unit)})</label><input id="tval" type="number" inputmode="decimal" value="${value(h, d) || ''}" placeholder="0">
         <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savetval" data-id="${h.id}">Save</button></div>`);
       setTimeout(() => { const i = $('#tval'); i && i.focus(); }, 350); break;
-    case 'savetval': setLog(h, d, Math.max(0, parseFloat($('#tval').value) || 0)); save(); closeSheet(); render(); checkMilestone(); break;
+    case 'savetval': { const was = isDone(h, d); setLog(h, d, Math.max(0, parseFloat($('#tval').value) || 0)); if (!was && isDone(h, d)) lastPop = h.id; save(); closeSheet(); render(); checkMilestone(); break; }
     case 'heatcat': heatCat = el.dataset.c; heatInfo = ''; { const sx = $('.heatscroll').scrollLeft; render(); $('.heatscroll').scrollLeft = sx; } break;
     case 'heatday': {
       const dd = el.dataset.d, st = heatCat === 'All' ? dayStats(dd) : dayStats(dd, heatCat);
@@ -755,7 +869,7 @@ document.addEventListener('click', e => {
       sr.name = name; sr.recurring = segVal('srec') !== '0'; sr.entries[mk] = amt;
       save(); closeSheet(); render(); break;
     }
-    case 'delsrc': if (confirm('Delete this income source?')) { S.income.sources = S.income.sources.filter(x => x.id !== id); save(); closeSheet(); render(); } break;
+    case 'delsrc': ask('Delete income source', 'All months of this source are removed from your income graph.', 'Delete', () => { S.income.sources = S.income.sources.filter(x => x.id !== id); save(); render(); }); break;
     case 'incgoal':
       openSheet(`<h3>Monthly income goal</h3><label>Goal per month (€)</label><input id="igoal" type="number" inputmode="numeric" value="${S.income.goal}">
         <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="saveigoal">Save</button></div>`); break;
@@ -770,16 +884,21 @@ document.addEventListener('click', e => {
       const type = segVal('type');
       const obj = {
         id: h ? h.id : uid(), name, cat: segVal('cat') || 'Physique', type,
-        unit: segVal('unit') || 'min', mode: segVal('hmode') || 'min', target: Math.max(1, parseFloat($('#htarget').value) || 1),
+        unit: $('#hunit').value.trim() || segVal('unit') || 'min', mode: segVal('hmode') || 'min', target: Math.max(1, parseFloat($('#htarget').value) || 1),
+        step: parseFloat($('#hstep').value) > 0 ? parseFloat($('#hstep').value) : null,
         days: segVals('days').length === 7 ? null : segVals('days').map(Number),
         restLimit: Math.max(0, parseInt($('#hrest').value) || 0), restPer: segVal('restper') || 'week',
-        created: h ? h.created : today(), desc: $('#hdesc').value.trim(),
+        created: ($('#hstart').value && $('#hstart').value <= today()) ? $('#hstart').value : (h ? h.created : today()), desc: $('#hdesc').value.trim(),
       };
+      if (h && h.archived) obj.archived = h.archived;
       if (obj.days && !obj.days.length) obj.days = null;
       if (h) Object.assign(h, obj); else S.habits.push(obj);
       save(); closeSheet(); render(); break;
     }
-    case 'delhabit': if (confirm('Delete this habit and its history?')) { S.habits = S.habits.filter(x => x.id !== id); save(); closeSheet(); render(); } break;
+    case 'askyes': { const f = pendingAsk; pendingAsk = null; closeSheet(); if (f) f(); break; }
+    case 'delhabit': ask('Delete habit', 'This removes the habit and all its history for good. Archiving keeps the history.', 'Delete', () => { S.habits = S.habits.filter(x => x.id !== id); save(); render(); }); break;
+    case 'archive': h.archived = today(); save(); closeSheet(); render(); toast('Habit archived'); break;
+    case 'unarchive': delete h.archived; save(); render(); toast('Habit restored'); break;
     case 'closesheet': if (el.classList.contains('scrim') && e.target !== el) break; closeSheet(); break;
     case 'hcat': habitCat = el.dataset.c; render(); break;
     case 'gcat': goalCat = el.dataset.c; render(); break;
@@ -788,11 +907,15 @@ document.addEventListener('click', e => {
     case 'prevm': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); render(); break;
     case 'nextm': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); render(); break;
     case 'water': {
-      const ml = parseInt(el.dataset.ml), cur = S.water.log[today()] || 0;
-      S.water.log[today()] = ml < 0 ? 0 : cur + ml;
-      if (ml > 0 && cur < S.water.goal && cur + ml >= S.water.goal) celebrate('💧 Water goal reached!');
-      buzz(); tone(480, .1); save(); render(); break;
+      const ml = parseInt(el.dataset.ml);
+      if (isFuture(selDay)) { toast('You cannot log the future'); break; }
+      addWater(selDay, ml); break;
     }
+    case 'watercustom':
+      openSheet(`<h3>Add water</h3><label>Amount (ml)</label><input id="wcustom" type="number" inputmode="numeric" placeholder="e.g. 330">
+        <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savewcustom">Add</button></div>`);
+      setTimeout(() => { const i = $('#wcustom'); i && i.focus(); }, 350); break;
+    case 'savewcustom': { const ml = parseInt($('#wcustom').value); closeSheet(); if (ml > 0) addWater(selDay, ml); break; }
     case 'savewater': {
       const goal = parseInt($('#wgoal').value) || 2500;
       const quick = $('#wquick').value.split(',').map(x => parseInt(x)).filter(x => x > 0);
@@ -805,11 +928,11 @@ document.addEventListener('click', e => {
       if (!title) { toast('Please enter a goal'); break; }
       const mode = segVal('gmode');
       const obj = { id: g ? g.id : uid(), title, cat: segVal('gcat') || 'Physique', deadline: $('#gdead').value || '', mode,
-        target: Math.max(1, parseFloat($('#gtarget').value) || 1), unit: $('#gunit').value.trim(), progress: g ? g.progress : 0, done: g ? g.done : false, created: g ? (g.created || today()) : today() };
+        target: Math.max(1, parseFloat($('#gtarget').value) || 1), unit: $('#gunit').value.trim(), desc: $('#gdesc').value.trim(), progress: g ? g.progress : 0, done: g ? g.done : false, created: g ? (g.created || today()) : today() };
       if (g) Object.assign(g, obj); else S.goals.push(obj);
       save(); closeSheet(); render(); break;
     }
-    case 'delgoal': if (confirm('Delete this goal?')) { S.goals = S.goals.filter(x => x.id !== id); save(); closeSheet(); render(); } break;
+    case 'delgoal': ask('Delete goal', 'This goal will be removed for good.', 'Delete', () => { S.goals = S.goals.filter(x => x.id !== id); save(); render(); }); break;
     case 'gdone': g.done = true; save(); render(); celebrate('🎯 Goal completed!'); break;
     case 'ginc': {
       const step = Math.max(1, Math.round(g.target / 20)); g.progress += step;
@@ -826,24 +949,50 @@ document.addEventListener('click', e => {
       break;
     case 'rprev': reflStep--; reflectSheet(); break;
     case 'setpin': pinSetup(); break;
-    case 'rmpin': if (confirm('Remove the app lock?')) { S.settings.pin = null; save(); render(); } break;
-    case 'export': {
-      const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob), a2 = document.createElement('a');
-      a2.href = url; a2.download = `si-backup-${today()}.json`; document.body.appendChild(a2); a2.click(); a2.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000); break;
+    case 'rmpin': ask('Remove app lock', 'Anyone with your phone can then open the app.', 'Remove', () => { S.settings.pin = null; save(); render(); }); break;
+    case 'export': exportBackup(); break;
+    case 'copybackup':
+      (navigator.clipboard ? navigator.clipboard.writeText(JSON.stringify(S)) : Promise.reject()).then(() => { S.settings.lastExport = today(); save(); toast('Backup copied. Paste it into Notes.'); }, () => toast('Copy is not available here'));
+      break;
+    case 'pastebackup':
+      openSheet(`<h3>Restore from text</h3><label>Paste your backup here</label><textarea id="pasted" rows="6" placeholder='{"habits": ...'></textarea>
+        <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="dopaste">Restore</button></div>`); break;
+    case 'dopaste': {
+      try { restore($('#pasted').value); closeSheet(); } catch (err) { toast('That text is not a valid backup'); }
+      break;
     }
     case 'import': $('#importfile').click(); break;
-    case 'wipe': if (confirm('Delete ALL data? This cannot be undone.')) { localStorage.removeItem(KEY); S = defaults(); render(); toast('All data deleted'); } break;
+    case 'wipe': ask('Delete all data', 'Habits, history, goals, income and reflections are erased from this phone. Save a backup first if unsure.', 'Delete everything', () => { localStorage.removeItem(KEY); S = defaults(); render(); toast('All data deleted'); }); break;
+    case 'setopt': {
+      const k = el.dataset.k; let v = el.dataset.v;
+      S.settings[k] = v === 'true' ? true : v === 'false' ? false : isNaN(v) ? v : Number(v);
+      if (k === 'dayStart') selDay = today();
+      save(); render(); break;
+    }
+    case 'tpl': habitSheet(HABIT_TEMPLATES[+el.dataset.i], true); break;
+    case 'calToday': selDay = today(); calMonth = new Date(); render(); break;
   }
 });
+function restore(text) {
+  const data = JSON.parse(text);
+  if (!data || !Array.isArray(data.habits)) throw new Error('not a backup');
+  S = merge(data); save(); selDay = today(); render(); toast('Backup restored');
+}
+async function exportBackup() {
+  const json = JSON.stringify(S, null, 2), name = `si-backup-${today()}.json`;
+  S.settings.lastExport = today(); save();
+  try {
+    const file = new File([json], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'SI backup' }); return; }
+  } catch (err) { if (err && err.name === 'AbortError') return; }
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' })), a2 = document.createElement('a');
+  a2.href = url; a2.download = name; document.body.appendChild(a2); a2.click(); a2.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
 document.addEventListener('change', e => {
   if (e.target.id !== 'importfile' || !e.target.files[0]) return;
   const rd = new FileReader();
-  rd.onload = () => {
-    try { S = Object.assign(defaults(), JSON.parse(rd.result)); save(); toast('Backup restored'); render(); }
-    catch (err) { toast('That file is not a valid backup'); }
-  };
+  rd.onload = () => { try { restore(rd.result); } catch (err) { toast('That file is not a valid backup'); } };
   rd.readAsText(e.target.files[0]);
 });
 
@@ -891,9 +1040,35 @@ function lockIfNeeded() {
     buzz([30, 30, 30]); return false;
   });
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden) { window.__hid = Date.now(); } else if (S.settings.pin && Date.now() - (window.__hid || 0) > 30000) lockIfNeeded(); });
+let hiddenAt = 0, knownToday = today();
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (S.settings.pin && Date.now() - hiddenAt >= (S.settings.lockAfter ?? 30) * 1000) lockIfNeeded();
+  // the app stayed open past the start of a new day: jump to it
+  const t = today();
+  if (t !== knownToday) { if (selDay === knownToday) selDay = t; knownToday = t; render(); }
+});
+// pull a sheet down by its grab bar to close it
+(function () {
+  let startY = 0, dy = 0, sheet = null;
+  document.addEventListener('touchstart', e => {
+    const g = e.target.closest('.grab'); if (!g) return;
+    sheet = g.parentElement; startY = e.touches[0].clientY; dy = 0; sheet.style.transition = 'none';
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!sheet) return; dy = Math.max(0, e.touches[0].clientY - startY); sheet.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    if (!sheet) return;
+    const sh = sheet; sheet = null;
+    if (dy > 110) closeSheet(); else { sh.style.transition = 'transform .35s cubic-bezier(.22,.9,.3,1)'; sh.style.transform = ''; }
+  });
+})();
 
 /* ---------- boot ---------- */
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline cache optional */ });
 render();
 lockIfNeeded();
+// ask iOS not to evict our storage, and nudge toward a backup now and then
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { /* not supported */ }
+if (S.habits.length && (!S.settings.lastExport || parse(today()) - parse(S.settings.lastExport) > 14 * 864e5)) setTimeout(() => toast('Tip: save a backup in Settings'), 2500);

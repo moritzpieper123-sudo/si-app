@@ -9,7 +9,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-famil
 #bg{position:fixed;inset:0;z-index:-1;background:
   radial-gradient(600px 400px at 85% -5%,rgba(245,215,110,.16),transparent 70%),
   radial-gradient(500px 500px at -10% 105%,rgba(122,162,201,.10),transparent 70%),var(--bg)}
-main{padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 110px);max-width:560px;margin:0 auto;animation:in .45s var(--ease)}
+main{padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 110px);max-width:560px;margin:0 auto}
 @keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 h1{font-size:30px;font-weight:700;letter-spacing:-.02em;margin:6px 4px 2px}
 h2{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:26px 6px 10px}
@@ -236,3 +236,37 @@ input[type=range]::-moz-range-thumb{width:34px;height:34px;border-radius:50%;bac
 .mrow .bar{height:6px}
 details summary{margin-top:14px;font-size:13px;color:var(--dim);cursor:pointer;list-style:none}
 details[open] summary{color:var(--text)}
+
+/* ===== final polish ===== */
+html{-webkit-text-size-adjust:100%}
+body{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation;overscroll-behavior-y:none}
+input,textarea{-webkit-user-select:text;user-select:text}
+button{touch-action:manipulation}
+/* entrance: only when switching tabs, children rise in one after another */
+@keyframes rise{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+main.enter>*{animation:rise .6s var(--ease) both;animation-delay:calc(var(--i,0)*55ms)}
+main.enter .tile,main.enter .goalcard,main.enter .card.flat{animation:rise .55s var(--ease) both;animation-delay:calc(160ms + var(--j,0)*60ms)}
+main.enter>.hbtn{animation:none}
+/* completing a habit: a quick springy pop and a soft glow pulse */
+@keyframes pop{0%{transform:scale(1)}35%{transform:scale(1.045)}70%{transform:scale(.99)}100%{transform:scale(1)}}
+@keyframes glow{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 55%,transparent)}100%{box-shadow:0 0 0 22px transparent}}
+.tile.pop{animation:pop .5s var(--ease),glow .8s ease-out}
+.tile.pop .tcheck{animation:pop .5s var(--ease)}
+.tile.future{opacity:.55}
+.day.fut{opacity:.35}
+button:active{transition-duration:.1s}
+.btn,.sq,.tcheck,.stepper button,.seg button,.cats button{transition:transform .25s var(--ease),background .3s,color .3s,opacity .3s}
+.btn:active,.sq:active,.tcheck:active,.stepper button:active,.seg button:active,.cats button:active{transform:scale(.93)}
+.tile{will-change:transform}
+/* sheets */
+.grab{width:42px;height:5px;border-radius:99px;background:rgba(255,255,255,.22);margin:-8px auto 16px;touch-action:none}
+.sheet{animation:up .5s var(--ease)}
+.seg.tpl{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:0 18px}
+.seg.tpl::-webkit-scrollbar{display:none}
+.seg.tpl button{white-space:nowrap;flex:none}
+.gdesc{font-size:13px;color:var(--dim);margin-top:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.toast{background:rgba(34,34,38,.82);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 36px rgba(0,0,0,.5)}
+.hint{line-height:1.45}
+.card.flat{cursor:pointer;transition:transform .3s var(--ease)}.card.flat:active{transform:scale(.985)}
+.scrim{transition:opacity .3s}
+@media (prefers-reduced-motion:reduce){main.enter>*,main.enter .tile,main.enter .goalcard,.tile.pop{animation:none!important}}
