@@ -18,10 +18,17 @@ const REFLECTION = [
   { id: 'mood', q: 'How is your mood today?', type: 'emoji' },
   { id: 'energy', q: 'How was your energy?', type: 'emoji' },
   { id: 'sleep', q: 'How did you sleep last night?', type: 'abc', opts: ['Great (7h or more)', 'Okay (5 to 7h)', 'Bad (under 5h)'] },
+  { id: 'rested', q: 'How rested do you feel right now?', type: 'slider', lo: 'Exhausted', hi: 'Fully rested' },
   { id: 'calm', q: 'How calm and relaxed did you feel?', type: 'emoji' },
+  { id: 'motivation', q: 'How motivated were you today?', type: 'slider', lo: 'No drive', hi: 'Unstoppable' },
   { id: 'focus', q: 'How was your focus?', type: 'abc', opts: ['Sharp', 'Average', 'Scattered'] },
   { id: 'perf', q: 'How do you rate your performance today?', type: 'emoji' },
+  { id: 'progress', q: 'How much progress did you make on your goals?', type: 'slider', lo: 'None', hi: 'A lot' },
+  { id: 'body', q: 'How does your body feel (soreness, health)?', type: 'slider', lo: 'Bad', hi: 'Great' },
+  { id: 'diet', q: 'How did you eat today?', type: 'abc', opts: ['Healthy', 'Okay', 'Poor'] },
+  { id: 'phone', q: 'How much did your phone distract you?', type: 'abc', opts: ['Barely', 'Some', 'A lot'] },
   { id: 'social', q: 'How did you feel around people?', type: 'abc', opts: ['Connected', 'Neutral', 'Withdrawn'] },
+  { id: 'satisfaction', q: 'How satisfied are you with your day overall?', type: 'slider', lo: 'Not at all', hi: 'Very' },
 ];
 const EMOJI = ['😞', '😕', '😐', '🙂', '😄'];
 
@@ -237,7 +244,7 @@ function viewToday(v) {
     <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
     ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
     <h2>Day reflection</h2>
-    <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '7 quick taps, no typing'}</div></div>
+    <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '14 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
 `;
 }
@@ -366,13 +373,15 @@ function sourceSheet(sr) {
 
 
 /* ---------- reflection insights ---------- */
-const METRICS = [['mood', 'Mood'], ['energy', 'Energy'], ['sleep', 'Sleep'], ['calm', 'Calm'], ['focus', 'Focus'], ['perf', 'Performance'], ['social', 'Social']];
+const METRICS = [['mood', 'Mood'], ['energy', 'Energy'], ['sleep', 'Sleep'], ['rested', 'Rested'], ['calm', 'Calm'], ['motivation', 'Motivation'], ['focus', 'Focus'], ['perf', 'Performance'], ['progress', 'Progress'], ['body', 'Body'], ['diet', 'Diet'], ['phone', 'Phone use'], ['social', 'Social'], ['satisfaction', 'Satisfaction']];
 const mLabel = id => (METRICS.find(m => m[0] === id) || [0, id])[1];
 // every answer becomes a score from 0 (worst) to 4 (best); A/B/C answers map to 4, 2, 0
 function rScore(r, id) {
   if (!r || r[id] == null) return null;
   const q = REFLECTION.find(x => x.id === id);
-  return q && q.type === 'abc' ? (2 - r[id]) * 2 : r[id];
+  if (q && q.type === 'abc') return (2 - r[id]) * 2;
+  if (q && q.type === 'slider') return r[id] / 10 * 4;
+  return r[id];
 }
 function rOverall(r) {
   const v = METRICS.map(m => rScore(r, m[0])).filter(x => x !== null);
@@ -540,7 +549,7 @@ function viewMore(v) {
     <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
       <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
       <input id="importfile" type="file" accept="application/json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 7</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 8</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -603,14 +612,25 @@ let reflDraft = {}, reflStep = 0;
 function reflectSheet() {
   const q = REFLECTION[reflStep];
   const cur = reflDraft[q.id];
-  const body = q.type === 'emoji'
-    ? `<div class="emoji-row">${EMOJI.map((e, i) => `<button class="${cur === i ? 'on' : ''}" data-act="ans" data-v="${i}">${e}</button>`).join('')}</div>`
-    : `<div class="abc">${q.opts.map((o, i) => `<button class="${cur === i ? 'on' : ''}" data-act="ans" data-v="${i}"><b>${'ABC'[i]}</b>  ${o}</button>`).join('')}</div>`;
+  let body;
+  if (q.type === 'emoji') body = `<div class="emoji-row">${EMOJI.map((e, i) => `<button class="${cur === i ? 'on' : ''}" data-act="ans" data-v="${i}">${e}</button>`).join('')}</div>`;
+  else if (q.type === 'abc') body = `<div class="abc">${q.opts.map((o, i) => `<button class="${cur === i ? 'on' : ''}" data-act="ans" data-v="${i}"><b>${'ABC'[i]}</b>  ${o}</button>`).join('')}</div>`;
+  else body = `<div class="sl"><div class="slval" id="rval">${cur == null ? 'Drag to rate' : cur}</div>
+    <input type="range" id="rslider" min="0" max="10" step="1" value="${cur == null ? 5 : cur}" style="--p:${(cur == null ? 5 : cur) * 10}%" class="${cur == null ? 'untouched' : ''}">
+    <div class="sllab"><span>${q.lo}</span><span>${q.hi}</span></div></div>`;
+  const last = reflStep === REFLECTION.length - 1;
   openSheet(`<div class="meta">Question ${reflStep + 1} of ${REFLECTION.length}</div><div class="bar" style="margin:8px 0 18px"><i style="width:${(reflStep + 1) / REFLECTION.length * 100}%"></i></div>
     <h3>${q.q}</h3>${body}
-    <div class="actions"><button class="btn" data-act="${reflStep ? 'rprev' : 'closesheet'}">${reflStep ? 'Back' : 'Cancel'}</button><button class="btn primary" data-act="rnext">${reflStep === REFLECTION.length - 1 ? 'Finish' : 'Skip'}</button></div>`);
+    <div class="actions"><button class="btn" data-act="${reflStep ? 'rprev' : 'closesheet'}">${reflStep ? 'Back' : 'Cancel'}</button><button class="btn primary" data-act="rnext">${last ? 'Finish' : cur != null ? 'Next' : 'Skip'}</button></div>`);
 }
-
+document.addEventListener('input', e => {
+  if (e.target.id !== 'rslider') return;
+  const v = parseInt(e.target.value);
+  reflDraft[REFLECTION[reflStep].id] = v;
+  e.target.style.setProperty('--p', v * 10 + '%'); e.target.classList.remove('untouched');
+  $('#rval').textContent = v; buzz(4);
+  const n = $('.actions .primary'); if (n && reflStep < REFLECTION.length - 1) n.textContent = 'Next';
+});
 /* ---------- celebrations ---------- */
 function celebrate(msg) {
   toast(msg); tone(660, .12); setTimeout(() => tone(880, .18), 120); setTimeout(() => tone(1175, .25), 260);
