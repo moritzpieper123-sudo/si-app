@@ -380,6 +380,7 @@ function viewMore(v) {
     <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
       <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
       <input id="importfile" type="file" accept="application/json" style="display:none"></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 3 (income tracker)</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
