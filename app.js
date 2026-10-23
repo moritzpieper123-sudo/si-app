@@ -22,6 +22,7 @@ const defaults = () => ({
   habits: [], logs: {}, rests: {},
   water: { goal: 2500, quick: [150, 250, 500], log: {} },
   goals: [], reflections: {}, settings: { pin: null }, celebrated: {},
+  income: { goal: 1000, sources: [] },
 });
 let S = load();
 function load() {
@@ -113,17 +114,28 @@ function habitStreak(h) {
 /* ---------- ui state ---------- */
 let tab = 'today', calMonth = new Date(), selDay = today(), goalCat = 'All', habitCat = 'All';
 
-const TABS = [['today', '◉', 'Today'], ['calendar', '▦', 'Calendar'], ['goals', '◎', 'Goals'], ['stats', '▤', 'Stats'], ['more', '⋯', 'More']];
+const IC = {
+  today: '<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4" class="o"/></svg>',
+  goals: '<svg viewBox="0 0 24 24" class="o"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6" class="f"/></svg>',
+  income: '<svg viewBox="0 0 24 24" class="o"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg>',
+  stats: '<svg viewBox="0 0 24 24"><rect x="3" y="12" width="4.5" height="9" rx="1.2"/><rect x="9.8" y="3" width="4.5" height="18" rx="1.2"/><rect x="16.5" y="8" width="4.5" height="13" rx="1.2"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" class="o"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>',
+};
+const TABS = [['today', 'Home'], ['calendar', 'Calendar'], ['goals', 'Goals'], ['income', 'Income'], ['stats', 'Stats']];
 function renderTabs() {
-  $('#tabs').innerHTML = TABS.map(([id, ic, label]) =>
-    `<button data-tab="${id}" class="${tab === id ? 'on' : ''}"><span class="ic">${ic}</span>${label}</button>`).join('');
+  $('#tabs').innerHTML = TABS.map(([id, label]) =>
+    `<button data-tab="${id}" aria-label="${label}" class="${tab === id ? 'on' : ''}">${IC[id]}</button>`).join('');
 }
 function go(t) { tab = t; render(); window.scrollTo({ top: 0 }); }
 function render() {
   renderTabs();
   const v = $('#view');
   v.style.animation = 'none'; void v.offsetWidth; v.style.animation = '';
-  ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, stats: viewStats, more: viewMore })[tab](v);
+  ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, income: viewIncome, stats: viewStats, more: viewMore })[tab](v);
+  v.insertAdjacentHTML('afterbegin', tab === 'more'
+    ? `<button class="hbtn" data-tab="today" aria-label="Back"><svg viewBox="0 0 24 24" class="o"><path d="M15 5l-7 7 7 7"/></svg></button>`
+    : `<button class="hbtn" data-tab="more" aria-label="Settings">${IC.gear}</button>`);
 }
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab]');
@@ -165,18 +177,18 @@ function viewToday(v) {
       <div class="glass"><b>${st.due ? Math.round(st.ratio * 100) : 0}%</b><span>Done</span></div>
       <div class="glass"><b>${si.best}</b><span>Best streak</span></div>
     </div>
-    <h2>Water</h2>
+    <h2>Hydration</h2>
     <div class="glass card"><div class="row">${ring(wp, 96, wp >= 1 ? 'var(--ok)' : 'var(--accent)')}
       <div class="grow"><div class="name" style="font-size:24px">${w} / ${S.water.goal} ml</div>
       <div class="meta">${wp >= 1 ? 'Goal reached 💧' : Math.max(0, S.water.goal - w) + ' ml to go'}</div></div></div>
       <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="water" data-ml="-1">Undo</button></div></div>
-    <h2>Habits</h2>
+    <h2>Habits <button class="btn small primary" data-act="newhabit">+ New</button></h2>
     <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
     ${shown.length ? shown.map(h => habitRow(h, d)).join('') : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Reflection saved ✓' : 'Reflect on your day'}</div><div class="meta">7 quick taps, no typing</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
-    <button class="fab" data-act="newhabit">+</button>`;
+`;
 }
 
 /* ---------- calendar ---------- */
@@ -217,13 +229,88 @@ function viewGoals(v) {
     <div class="cats">${cats.map(c => `<button class="${goalCat === c ? 'on' : ''}" data-act="gcat" data-c="${c}">${c}</button>`).join('')}</div>
     ${list.length ? list.map(g => {
       const left = g.deadline ? Math.ceil((parse(g.deadline) - parse(today())) / 864e5) : null;
-      return `<div class="glass card"><div class="row"><div class="grow" data-act="editgoal" data-id="${g.id}">
-        <div class="name">${g.done ? '✓ ' : ''}${esc(g.title)}</div>
-        <div class="meta"><span class="chip">${g.cat}</span>${g.deadline ? (g.done ? 'Done' : left < 0 ? 'Overdue by ' + (-left) + ' days' : left + ' days left') : 'No deadline'}${g.mode === 'num' ? ` · ${g.progress}/${g.target} ${esc(g.unit || '')}` : ''}</div></div>
-        ${g.done ? '' : g.mode === 'num' ? `<div class="stepper"><button data-act="gdec" data-id="${g.id}">−</button><button data-act="ginc" data-id="${g.id}">+</button></div>` : `<button class="btn small primary" data-act="gdone" data-id="${g.id}">Done</button>`}</div>
-        ${g.mode === 'num' ? `<div class="bar ${g.done ? 'green' : ''}" style="margin-top:10px"><i style="width:${goalPct(g) * 100}%"></i></div>` : ''}</div>`;
-    }).join('') : '<div class="glass empty">No goals here yet. Tap + to add one.</div>'}
-    <button class="fab" data-act="newgoal">+</button>`;
+      const pct = Math.round(goalPct(g) * 100);
+      let status = 'On track', sc = 'var(--ok)';
+      if (g.done) status = 'Done';
+      else if (left !== null && left < 0) { status = 'Overdue'; sc = '#ff8a8a'; }
+      else if (left !== null && g.created) {
+        const total = Math.max(1, (parse(g.deadline) - parse(g.created)) / 864e5), elapsed = total - left;
+        if (pct / 100 < (elapsed / total) * .8 && elapsed / total > .15) { status = 'Behind'; sc = 'var(--accent)'; }
+      }
+      return `<div class="goalcard"><div class="grow" data-act="editgoal" data-id="${g.id}">
+        <div class="gtitle">${esc(g.title)}</div>
+        <div class="gpct">${pct}%${g.mode === 'num' ? `<small> ${g.progress}/${g.target} ${esc(g.unit || '')}</small>` : ''}</div>
+        <div class="bar" style="margin-top:12px"><i style="width:${pct}%"></i></div>
+        <div class="meta" style="margin-top:8px"><span class="chip">${g.cat}</span></div></div>
+        <div class="gside"><span style="color:${sc}">${status}</span><b>${left === null ? '' : left < 0 ? -left : left}</b><small>${left === null ? 'no deadline' : left < 0 ? 'days over' : 'days left'}</small></div>
+        ${g.done ? '' : g.mode === 'num' ? `<div class="gbtns"><button class="sq" data-act="gdec" data-id="${g.id}">−</button><button class="sq on" data-act="ginc" data-id="${g.id}">+</button></div>` : `<button class="sq on gcheck" data-act="gdone" data-id="${g.id}">✓</button>`}</div>`;
+    }).join('') : '<div class="empty">No goals here yet. Tap + to add one.</div>'}
+    <div class="actions"><button class="btn primary" data-act="newgoal">+ New goal</button></div>`;
+}
+
+
+/* ---------- income ---------- */
+const mkey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+function srcValue(src, mk) {
+  if (src.entries[mk] !== undefined) return src.entries[mk];
+  if (!src.recurring) return 0;
+  const prev = Object.keys(src.entries).filter(k => k <= mk).sort().pop();
+  return prev ? src.entries[prev] : 0;
+}
+const incomeTotal = mk => S.income.sources.reduce((a, s) => a + srcValue(s, mk), 0);
+const eur = n => '€' + Math.round(n).toLocaleString('en-GB');
+function smooth(pts) {
+  if (pts.length < 2) return '';
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], mx = (x0 + x1) / 2;
+    d += ` C${mx},${y0} ${mx},${y1} ${x1},${y1}`;
+  }
+  return d;
+}
+function incomeChart(vals, goal) {
+  const W = 360, H = 170, padT = 14, padB = 8;
+  const max = Math.max(goal, ...vals, 1) * 1.1;
+  const x = i => i * (W / (vals.length - 1)), y = v => padT + (H - padT - padB) * (1 - v / max);
+  const pts = vals.map((v, i) => [x(i), y(v)]);
+  const line = smooth(pts);
+  const last = pts[pts.length - 1];
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="ig" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6ee7a8" stop-opacity=".28"/><stop offset="1" stop-color="#6ee7a8" stop-opacity="0"/></linearGradient></defs>
+    <line x1="0" x2="${W}" y1="${y(goal)}" y2="${y(goal)}" stroke="rgba(255,255,255,.25)" stroke-dasharray="4 5"/>
+    <path d="${line} L${W},${H} L0,${H} Z" fill="url(#ig)"/>
+    <path d="${line}" fill="none" stroke="#6ee7a8" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke" class="draw"/>
+    <circle cx="${last[0] - 4}" cy="${last[1]}" r="5" fill="#000" stroke="#6ee7a8" stroke-width="2.4" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function viewIncome(v) {
+  const now = new Date();
+  const months = Array.from({ length: 12 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - 11 + i, 1));
+  const vals = months.map(m => incomeTotal(mkey(m)));
+  const cur = vals[11], prev = vals[10], goal = S.income.goal;
+  const pct = goal ? Math.round(cur / goal * 100) : 0;
+  const diff = prev ? Math.round((cur - prev) / prev * 100) : null;
+  const total12 = vals.reduce((a, b) => a + b, 0);
+  const mk = mkey(now);
+  v.innerHTML = `<h1>Income</h1><p class="sub">Your monthly income sources.</p>
+    <div class="metric"><div class="mhead"><em>Income</em><span>/MONTH</span></div>
+      <div class="mval"><small>€</small>${Math.round(cur).toLocaleString('en-GB')}<span class="mgoal"><b style="color:var(--ok)">${pct}%</b> ↗ ${eur(goal)}</span></div></div>
+    ${S.income.sources.length ? incomeChart(vals, goal) : '<div class="empty">Add your first income source to see the graph.</div>'}
+    <div class="axis">${months.map((m, i) => i % 2 ? '' : `<span>${m.toLocaleDateString('en-GB', { month: 'short' })}</span>`).join('')}</div>
+    <div class="hero" style="margin-top:6px"><div class="pill"><b>${diff === null ? '–' : (diff >= 0 ? '+' : '') + diff + '%'}</b><span>vs last month</span></div><div class="pill"><b>${eur(total12)}</b><span>last 12 months</span></div></div>
+    <h2>Sources</h2>
+    ${S.income.sources.length ? S.income.sources.map(sr => `<div class="card flat row" data-act="editsrc" data-id="${sr.id}"><div class="grow"><div class="name">${esc(sr.name)}</div><div class="meta">${sr.recurring ? 'Monthly, recurring' : 'One month only'}</div></div><b class="amt">${eur(srcValue(sr, mk))}</b></div>`).join('') : ''}
+    <div class="actions"><button class="btn primary" data-act="newsrc">+ Add source</button><button class="btn" data-act="incgoal">Monthly goal</button></div>`;
+}
+function sourceSheet(sr) {
+  const n = sr || { name: '', recurring: true, entries: {} };
+  const mk = mkey(new Date());
+  openSheet(`<h3>${sr ? 'Edit source' : 'New income source'}</h3>
+    <label>Name</label><input id="sname" value="${esc(n.name)}" placeholder="e.g. TikTok, Tutoring, Job">
+    <label>Month</label><input id="smonth" type="month" value="${mk}">
+    <label>Amount for that month (€)</label><input id="samount" type="number" inputmode="decimal" value="${sr ? srcValue(sr, mk) : ''}" placeholder="0">
+    <label>Repeats</label>${segHtml('srec', [['1', 'Every month'], ['0', 'This month only']], n.recurring ? '1' : '0')}
+    <p class="hint">Recurring sources carry forward until you change the amount in a later month.</p>
+    <div class="actions">${sr ? '<button class="btn danger" data-act="delsrc" data-id="' + sr.id + '">Delete</button>' : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savesrc" data-id="${sr ? sr.id : ''}">Save</button></div>`);
 }
 
 /* ---------- stats ---------- */
@@ -253,6 +340,12 @@ function viewStats(v) {
     const bg = !s.due ? '' : s.complete && s.done ? 'background:var(--ok)' : s.ratio > 0 ? `background:rgba(245,215,110,${(.2 + s.ratio * .8).toFixed(2)})` : s.complete ? 'background:var(--rest)' : '';
     heat += `<i style="${bg}" title="${d}"></i>`;
   }
+  let cons = '';
+  for (let i = 29; i >= 0; i--) {
+    const d = addDays(t, -i), s2 = dayStats(d);
+    const bg = !s2.due ? '' : s2.complete && s2.done ? 'background:var(--ok)' : s2.ratio > 0 ? `background:rgba(245,215,110,${(.2 + s2.ratio * .8).toFixed(2)})` : s2.complete ? 'background:var(--rest)' : '';
+    cons += `<i style="${bg}"></i>`;
+  }
   const bars = (arr, cls = '') => `<div class="glass"><div class="bars ${cls}">${arr.map(x => `<div><i style="height:${Math.max(3, x.h)}%"></i></div>`).join('')}</div>
     <div class="labels">${arr.map(x => `<span>${x.l}</span>`).join('')}</div></div>`;
   const refl = Object.keys(S.reflections).sort().slice(-7).map(d => {
@@ -265,6 +358,7 @@ function viewStats(v) {
     <h2>Last 7 days</h2>${bars(week.map(x => ({ l: DOW[dowMon(x.d)], h: x.r.ratio * 100 })))}
     <h2>Monthly completion</h2>${bars(monthly.map(x => ({ l: x.label, h: x.r * 100 })))}
     <h2>Water per day</h2>${bars(last7.map(d => ({ l: DOW[dowMon(d)], h: (S.water.log[d] || 0) / maxW * 100 })), 'blue')}
+    <h2>Consistency <span>last 30 days</span></h2><div class="cons">${cons}</div>
     <h2>Year heat map</h2><div class="glass heat">${heat}</div>
     <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly</span><span><i style="background:var(--rest)"></i>Rest</span></div>
     ${refl.length ? `<h2>Mood trend</h2>${bars(refl)}` : ''}
@@ -275,7 +369,7 @@ function viewStats(v) {
 /* ---------- more / settings ---------- */
 function viewMore(v) {
   v.innerHTML = `<h1>More</h1><p class="sub">Settings, security and backup.</p>
-    <h2>Water</h2>
+    <h2>Hydration</h2>
     <div class="glass card"><label style="margin-top:0">Daily goal (ml)</label><input id="wgoal" type="number" inputmode="numeric" value="${S.water.goal}">
       <label>Quick-add amounts (ml, comma separated)</label><input id="wquick" value="${S.water.quick.join(', ')}">
       <div class="actions"><button class="btn primary" data-act="savewater">Save</button></div></div>
@@ -410,6 +504,24 @@ document.addEventListener('click', e => {
       else toast('No rest days left for this period');
       buzz(); save(); render(); checkMilestone(); break;
     }
+    case 'more': go('more'); break;
+    case 'newsrc': sourceSheet(); break;
+    case 'editsrc': sourceSheet(S.income.sources.find(x => x.id === id)); break;
+    case 'savesrc': {
+      const name = $('#sname').value.trim();
+      if (!name) { toast('Please enter a name'); break; }
+      const mk = $('#smonth').value || mkey(new Date());
+      const amt = Math.max(0, parseFloat($('#samount').value) || 0);
+      let sr = S.income.sources.find(x => x.id === id);
+      if (!sr) { sr = { id: uid(), name, recurring: true, entries: {} }; S.income.sources.push(sr); }
+      sr.name = name; sr.recurring = segVal('srec') !== '0'; sr.entries[mk] = amt;
+      save(); closeSheet(); render(); break;
+    }
+    case 'delsrc': if (confirm('Delete this income source?')) { S.income.sources = S.income.sources.filter(x => x.id !== id); save(); closeSheet(); render(); } break;
+    case 'incgoal':
+      openSheet(`<h3>Monthly income goal</h3><label>Goal per month (€)</label><input id="igoal" type="number" inputmode="numeric" value="${S.income.goal}">
+        <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="saveigoal">Save</button></div>`); break;
+    case 'saveigoal': S.income.goal = Math.max(1, parseInt($('#igoal').value) || 1000); save(); closeSheet(); render(); break;
     case 'edit': habitSheet(h); break;
     case 'newhabit': habitSheet(); break;
     case 'savehabit': {
@@ -453,7 +565,7 @@ document.addEventListener('click', e => {
       if (!title) { toast('Please enter a goal'); break; }
       const mode = segVal('gmode');
       const obj = { id: g ? g.id : uid(), title, cat: segVal('gcat') || 'Physique', deadline: $('#gdead').value || '', mode,
-        target: Math.max(1, parseFloat($('#gtarget').value) || 1), unit: $('#gunit').value.trim(), progress: g ? g.progress : 0, done: g ? g.done : false };
+        target: Math.max(1, parseFloat($('#gtarget').value) || 1), unit: $('#gunit').value.trim(), progress: g ? g.progress : 0, done: g ? g.done : false, created: g ? (g.created || today()) : today() };
       if (g) Object.assign(g, obj); else S.goals.push(obj);
       save(); closeSheet(); render(); break;
     }
