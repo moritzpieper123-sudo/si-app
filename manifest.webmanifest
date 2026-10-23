@@ -1,6 +1,6 @@
 {
-  "name": "SI",
-  "short_name": "SI",
+  "name": "Ascend",
+  "short_name": "Ascend",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
