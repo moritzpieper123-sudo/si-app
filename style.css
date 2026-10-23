@@ -32,7 +32,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .check.rest{background:rgba(122,162,201,.25);border-color:var(--rest);color:var(--rest)}
 .stepper{display:flex;align-items:center;gap:8px}
 .stepper button{width:34px;height:34px;border-radius:50%;background:var(--glass-2);border:1px solid var(--line);font-size:18px}
-.stepper .val{min-width:62px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}
+.stepper .val{min-width:78px;text-align:center;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
 .bar{height:10px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
 .bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#ffeaa0);transition:width .7s var(--ease)}
 .bar.green>i{background:linear-gradient(90deg,#2fbf6a,var(--ok))}

@@ -152,7 +152,7 @@ function habitRow(h, d) {
   const left = h.restLimit ? Math.max(0, h.restLimit - restsUsedThisPeriod(h, d) + (rest ? 1 : 0)) : 0;
   const hs = habitStreak(h);
   const control = h.type === 'num'
-    ? `<div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val">${value(h, d)} ${esc(h.unit)}</span><button data-act="inc" data-id="${h.id}">+</button></div>`
+    ? `<div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val" data-act="typeval" data-id="${h.id}">${value(h, d)} ${esc(h.unit)}</span><button data-act="inc" data-id="${h.id}">+</button></div>`
     : `<button class="check ${done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`;
   const restBtn = h.restLimit
     ? `<button class="btn small" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest' : `Rest day (${left} left)`}</button>` : '';
@@ -380,7 +380,7 @@ function viewMore(v) {
     <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
       <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
       <input id="importfile" type="file" accept="application/json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 3 (income tracker)</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 4</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -417,7 +417,7 @@ function habitSheet(h) {
     <label>Type</label>${segHtml('type', [['bool', 'Yes / No'], ['num', 'Number']], nh.type)}
     <div id="numfields" style="display:${nh.type === 'num' ? 'block' : 'none'}">
       <label>Daily target</label><input id="htarget" type="number" inputmode="decimal" value="${nh.target}">
-      <label>Unit</label>${segHtml('unit', ['ml', 'l', 'reps', 'min', 'h', 'km', 'g', 'kg', 'pages'].map(u => [u, u]), nh.unit)}
+      <label>Unit</label>${segHtml('unit', ['kcal', 'ml', 'l', 'reps', 'min', 'h', 'km', 'g', 'kg', 'pages'].map(u => [u, u]), nh.unit)}
     </div>
     <label>Days</label>${segHtml('days', DOW_NAMES.map((n, i) => [i, n]), dayList.map(String), true)}
     <label>Rest days allowed (0 = none)</label><input id="hrest" type="number" inputmode="numeric" min="0" value="${nh.restLimit}">
@@ -487,7 +487,7 @@ function setLog(h, d, val) {
   (S.logs[d] = S.logs[d] || {})[h.id] = Math.max(0, val);
   if (S.rests[d]) S.rests[d] = S.rests[d].filter(x => x !== h.id);
 }
-function numStep(h) { return h.unit === 'ml' ? 100 : h.unit === 'min' ? 5 : h.unit === 'g' ? 10 : 1; }
+function numStep(h) { return h.unit === 'kcal' ? 50 : h.unit === 'ml' ? 100 : h.unit === 'min' ? 5 : h.unit === 'g' ? 10 : 1; }
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
@@ -505,6 +505,11 @@ document.addEventListener('click', e => {
       else toast('No rest days left for this period');
       buzz(); save(); render(); checkMilestone(); break;
     }
+    case 'typeval':
+      openSheet(`<h3>${esc(h.name)}</h3><label>Value for this day (${esc(h.unit)})</label><input id="tval" type="number" inputmode="decimal" value="${value(h, d) || ''}" placeholder="0">
+        <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savetval" data-id="${h.id}">Save</button></div>`);
+      setTimeout(() => { const i = $('#tval'); i && i.focus(); }, 350); break;
+    case 'savetval': setLog(h, d, Math.max(0, parseFloat($('#tval').value) || 0)); save(); closeSheet(); render(); checkMilestone(); break;
     case 'more': go('more'); break;
     case 'newsrc': sourceSheet(); break;
     case 'editsrc': sourceSheet(S.income.sources.find(x => x.id === id)); break;
