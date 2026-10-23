@@ -2,6 +2,7 @@
 /* SI: private self-improvement app. All data lives in localStorage on this device. */
 
 const CATS = ['Physique', 'Money', 'Social', 'Knowledge', 'Looks'];
+const CATCOL = { Physique: '#ff7a59', Money: '#6ee7a8', Social: '#6fb5ff', Knowledge: '#b794f6', Looks: '#ff8fc7' };
 const MILESTONES = [7, 30, 100, 200, 365];
 const KEY = 'si-data-v1';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -64,7 +65,10 @@ function tone(freq = 660, dur = .12, vol = .05) {
 const habitDue = (h, d) => d >= h.created && (!h.days || h.days.includes(dowMon(d)));
 const isRest = (h, d) => (S.rests[d] || []).includes(h.id);
 const value = (h, d) => (S.logs[d] && S.logs[d][h.id]) || 0;
-const isDone = (h, d) => h.type === 'num' ? value(h, d) >= h.target : value(h, d) >= 1;
+const isMax = h => h.type === 'num' && h.mode === 'max';
+const isOver = (h, d) => isMax(h) && value(h, d) > h.target;
+const isDone = (h, d) => h.type === 'num' ? (isMax(h) ? value(h, d) > 0 && value(h, d) <= h.target : value(h, d) >= h.target) : value(h, d) >= 1;
+const hProgress = (h, d) => h.type === 'num' ? (isMax(h) ? (isDone(h, d) ? 1 : 0) : Math.min(1, value(h, d) / h.target)) : (value(h, d) ? 1 : 0);
 function restsUsedThisPeriod(h, d) {
   const per = h.restPer === 'month';
   let n = 0;
@@ -74,15 +78,12 @@ function restsUsedThisPeriod(h, d) {
   }
   return n;
 }
-function dayStats(d) {
-  const due = S.habits.filter(h => habitDue(h, d));
+function dayStats(d, cat) {
+  const due = S.habits.filter(h => habitDue(h, d) && (!cat || h.cat === cat));
   if (!due.length) return { due: 0, done: 0, rest: 0, ratio: 0, complete: false };
   let done = 0, rest = 0;
   due.forEach(h => { if (isDone(h, d)) done++; else if (isRest(h, d)) rest++; });
-  const progress = due.reduce((a, h) => {
-    if (isRest(h, d) && !isDone(h, d)) return a + 1;
-    return a + (h.type === 'num' ? Math.min(1, value(h, d) / h.target) : (value(h, d) ? 1 : 0));
-  }, 0);
+  const progress = due.reduce((a, h) => a + (isRest(h, d) && !isDone(h, d) ? 1 : hProgress(h, d)), 0);
   return { due: due.length, done, rest, ratio: progress / due.length, complete: done + rest === due.length };
 }
 function streakInfo(upTo = today()) {
@@ -112,6 +113,7 @@ function habitStreak(h) {
 }
 
 /* ---------- ui state ---------- */
+let heatCat = 'All', heatInfo = '';
 let tab = 'today', calMonth = new Date(), selDay = today(), goalCat = 'All', habitCat = 'All';
 
 const IC = {
@@ -133,6 +135,7 @@ function render() {
   const v = $('#view');
   v.style.animation = 'none'; void v.offsetWidth; v.style.animation = '';
   ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, income: viewIncome, stats: viewStats, more: viewMore })[tab](v);
+  const hs = $('.heatscroll'); if (hs) hs.scrollLeft = hs.scrollWidth;
   v.insertAdjacentHTML('afterbegin', tab === 'more'
     ? `<button class="hbtn" data-tab="today" aria-label="Back"><svg viewBox="0 0 24 24" class="o"><path d="M15 5l-7 7 7 7"/></svg></button>`
     : `<button class="hbtn" data-tab="more" aria-label="Settings">${IC.gear}</button>`);
@@ -141,6 +144,33 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab]');
   if (t) { buzz(8); go(t.dataset.tab); }
 });
+
+
+function heatHtml() {
+  const t = today();
+  const start = addDays(weekStart(t), -52 * 7), endD = addDays(weekStart(t), 6);
+  let cells = '';
+  for (let d = start; d <= endD; d = addDays(d, 1)) {
+    if (d > t) { cells += '<i class="fut"></i>'; continue; }
+    let bg = '', st = null;
+    if (heatCat === 'All') {
+      st = dayStats(d);
+      if (st.due && (st.done || st.rest || st.ratio > 0)) {
+        let best = null, bestScore = -1;
+        CATS.forEach(c => { const cs = dayStats(d, c); const sc = cs.due ? cs.ratio * 100 + cs.done : -1; if (sc > bestScore) { bestScore = sc; best = c; } });
+        bg = `background:${CATCOL[best]};opacity:${(.3 + st.ratio * .7).toFixed(2)}`;
+      }
+    } else {
+      st = dayStats(d, heatCat);
+      if (st.due && (st.done || st.rest || st.ratio > 0)) bg = `background:${CATCOL[heatCat]};opacity:${(.25 + st.ratio * .75).toFixed(2)}`;
+    }
+    cells += `<i style="${bg}" class="${d === t ? 'tdy' : ''}" data-act="heatday" data-d="${d}"></i>`;
+  }
+  const cats = ['All', ...CATS];
+  return `<div class="heatwrap"><div class="cats">${cats.map(c => `<button class="${heatCat === c ? 'on' : ''}" data-act="heatcat" data-c="${c}">${c === 'All' ? c : `<b class="dot" style="background:${CATCOL[c]}"></b>${c}`}</button>`).join('')}</div>
+    <div class="heatscroll"><div class="heatgrid">${cells}</div></div>
+    <div class="heatinfo">${heatInfo || 'Tap a square to see that day. Scroll left for earlier months.'}</div></div>`;
+}
 
 /* ---------- today ---------- */
 function ring(pct, size = 96, color = 'var(--accent)') {
@@ -156,9 +186,9 @@ function habitRow(h, d) {
     : `<button class="check ${done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`;
   const restBtn = h.restLimit
     ? `<button class="btn small" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest' : `Rest day (${left} left)`}</button>` : '';
-  const pct = h.type === 'num' ? `<div class="bar" style="margin-top:10px"><i style="width:${Math.min(100, value(h, d) / h.target * 100)}%"></i></div>` : '';
+  const pct = h.type === 'num' ? `<div class="bar ${isOver(h, d) ? 'red' : ''}" style="margin-top:10px"><i style="width:${Math.min(100, value(h, d) / h.target * 100)}%"></i></div>${isOver(h, d) ? '<div class="meta" style="color:#ff8a8a;margin-top:6px">Over the limit</div>' : ''}` : '';
   return `<div class="glass card"><div class="row"><div class="grow" data-act="edit" data-id="${h.id}"><div class="name">${esc(h.name)}</div>
-    <div class="meta"><span class="chip">${h.cat}</span>${hs.cur ? '🔥 ' + hs.cur : 'No streak yet'}${h.type === 'num' ? ` · goal ${h.target} ${esc(h.unit)}` : ''}</div></div>${control}</div>${pct}
+    <div class="meta"><span class="chip">${h.cat}</span>${hs.cur ? '🔥 ' + hs.cur : 'No streak yet'}${h.type === 'num' ? ` · ${isMax(h) ? 'limit' : 'goal'} ${h.target} ${esc(h.unit)}` : ''}</div></div>${control}</div>${pct}
     ${restBtn ? `<div style="margin-top:10px">${restBtn}</div>` : ''}</div>`;
 }
 function viewToday(v) {
@@ -177,6 +207,7 @@ function viewToday(v) {
       <div class="glass"><b>${st.due ? Math.round(st.ratio * 100) : 0}%</b><span>Done</span></div>
       <div class="glass"><b>${si.best}</b><span>Best streak</span></div>
     </div>
+    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Hydration</h2>
     <div class="glass card"><div class="row">${ring(wp, 96, wp >= 1 ? 'var(--ok)' : 'var(--accent)')}
       <div class="grow"><div class="name" style="font-size:24px">${w} / ${S.water.goal} ml</div>
@@ -359,8 +390,6 @@ function viewStats(v) {
     <h2>Monthly completion</h2>${bars(monthly.map(x => ({ l: x.label, h: x.r * 100 })))}
     <h2>Water per day</h2>${bars(last7.map(d => ({ l: DOW[dowMon(d)], h: (S.water.log[d] || 0) / maxW * 100 })), 'blue')}
     <h2>Consistency <span>last 30 days</span></h2><div class="cons">${cons}</div>
-    <h2>Year heat map</h2><div class="glass heat">${heat}</div>
-    <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly</span><span><i style="background:var(--rest)"></i>Rest</span></div>
     ${refl.length ? `<h2>Mood trend</h2>${bars(refl)}` : ''}
     <h2>Habit streaks</h2>
     ${perHabit.length ? perHabit.map(({ h, s }) => `<div class="glass card row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta"><span class="chip">${h.cat}</span>Best ${s.best}</div></div><b style="font-size:22px">🔥 ${s.cur}</b></div>`).join('') : '<div class="glass empty">Add habits to see streaks.</div>'}`;
@@ -369,6 +398,7 @@ function viewStats(v) {
 /* ---------- more / settings ---------- */
 function viewMore(v) {
   v.innerHTML = `<h1>More</h1><p class="sub">Settings, security and backup.</p>
+    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Hydration</h2>
     <div class="glass card"><label style="margin-top:0">Daily goal (ml)</label><input id="wgoal" type="number" inputmode="numeric" value="${S.water.goal}">
       <label>Quick-add amounts (ml, comma separated)</label><input id="wquick" value="${S.water.quick.join(', ')}">
@@ -380,7 +410,7 @@ function viewMore(v) {
     <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
       <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
       <input id="importfile" type="file" accept="application/json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 4</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 5</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -416,6 +446,7 @@ function habitSheet(h) {
     <label>Category</label>${segHtml('cat', CATS.map(c => [c, c]), nh.cat)}
     <label>Type</label>${segHtml('type', [['bool', 'Yes / No'], ['num', 'Number']], nh.type)}
     <div id="numfields" style="display:${nh.type === 'num' ? 'block' : 'none'}">
+      <label>Type of target</label>${segHtml('hmode', [['min', 'Reach at least'], ['max', 'Stay under']], nh.mode || 'min')}
       <label>Daily target</label><input id="htarget" type="number" inputmode="decimal" value="${nh.target}">
       <label>Unit</label>${segHtml('unit', ['kcal', 'ml', 'l', 'reps', 'min', 'h', 'km', 'g', 'kg', 'pages'].map(u => [u, u]), nh.unit)}
     </div>
@@ -510,6 +541,12 @@ document.addEventListener('click', e => {
         <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savetval" data-id="${h.id}">Save</button></div>`);
       setTimeout(() => { const i = $('#tval'); i && i.focus(); }, 350); break;
     case 'savetval': setLog(h, d, Math.max(0, parseFloat($('#tval').value) || 0)); save(); closeSheet(); render(); checkMilestone(); break;
+    case 'heatcat': heatCat = el.dataset.c; heatInfo = ''; { const sx = $('.heatscroll').scrollLeft; render(); $('.heatscroll').scrollLeft = sx; } break;
+    case 'heatday': {
+      const dd = el.dataset.d, st = heatCat === 'All' ? dayStats(dd) : dayStats(dd, heatCat);
+      heatInfo = `${parse(dd).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}: ` + (st.due ? `${st.done}/${st.due} done${st.rest ? ', ' + st.rest + ' rest' : ''}${st.complete ? ' ✓' : ''}` : 'no habits due');
+      $('.heatinfo').textContent = heatInfo; break;
+    }
     case 'more': go('more'); break;
     case 'newsrc': sourceSheet(); break;
     case 'editsrc': sourceSheet(S.income.sources.find(x => x.id === id)); break;
@@ -536,7 +573,7 @@ document.addEventListener('click', e => {
       const type = segVal('type');
       const obj = {
         id: h ? h.id : uid(), name, cat: segVal('cat') || 'Physique', type,
-        unit: segVal('unit') || 'min', target: Math.max(1, parseFloat($('#htarget').value) || 1),
+        unit: segVal('unit') || 'min', mode: segVal('hmode') || 'min', target: Math.max(1, parseFloat($('#htarget').value) || 1),
         days: segVals('days').length === 7 ? null : segVals('days').map(Number),
         restLimit: Math.max(0, parseInt($('#hrest').value) || 0), restPer: segVal('restper') || 'week',
         created: h ? h.created : today(),
