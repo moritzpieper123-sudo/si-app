@@ -1,13 +1,14 @@
 'use strict';
 /* SI: private self-improvement app. All data lives in localStorage on this device. */
 
-const CATS = ['Physique', 'Money', 'Social', 'Knowledge', 'Looks'];
-const CATCOL = { Physique: '#ff7a59', Money: '#6ee7a8', Social: '#6fb5ff', Knowledge: '#b794f6', Looks: '#ff8fc7' };
+const CATS = ['Physique', 'Money', 'Social', 'Knowledge', 'Looks', 'General'];
+const CATCOL = { Physique: '#ff7a59', Money: '#6ee7a8', Social: '#6fb5ff', Knowledge: '#b794f6', Looks: '#ff8fc7', General: '#d8d8d2' };
 const CATICON = {
   Physique: '<svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>',
   Money: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.4c-.6-.9-1.6-1.3-2.8-1.3-1.5 0-2.6.7-2.6 1.9 0 2.7 5.6 1.3 5.6 3.9 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.5-3-1.5M12 6.5v1.6M12 15.9v1.6"/></svg>',
   Social: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.6a3 3 0 0 1 0 5.8M18 14.2c1.8.7 3 2.3 3 4.8"/></svg>',
   Knowledge: '<svg viewBox="0 0 24 24"><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z"/><path d="M12 6v13.5"/></svg>',
+  General: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/></svg>',
   Looks: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>',
 };
 const MILESTONES = [7, 30, 100, 200, 365];
@@ -185,7 +186,7 @@ function runAnims() {
     const key = el.dataset.key, to = el.dataset.to, from = prevAnim[key];
     prevAnim[key] = to;
     if (from === undefined || from === to) return;
-    const set = v => { if (el.dataset.prop === 'width') el.style.width = v + '%'; else el.style.strokeDashoffset = v; };
+    const set = v => { const p = el.dataset.prop; if (p === 'width') el.style.width = v + '%'; else if (p === 'height') el.style.height = v + '%'; else el.style.strokeDashoffset = v; };
     set(from); void el.getBoundingClientRect(); set(to);
   });
 }
@@ -208,7 +209,7 @@ function render() {
     ? `<button class="hbtn" data-tab="today" aria-label="Back"><svg viewBox="0 0 24 24" class="o"><path d="M15 5l-7 7 7 7"/></svg></button>`
     : `<button class="hbtn" data-tab="more" aria-label="Settings">${IC.gear}</button>`);
   runAnims();
-  lastPop = null;
+  lastPop = null; lastDrop = false;
 }
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab]');
@@ -243,9 +244,15 @@ function heatHtml() {
 }
 
 /* ---------- today ---------- */
-function ring(pct, key, color = 'var(--accent)') {
-  const r = 40, c = 2 * Math.PI * r, off = c * (1 - Math.min(1, pct));
-  return `<svg class="water-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="${r}" stroke="rgba(255,255,255,.1)"/><circle cx="50" cy="50" r="${r}" stroke="${color}" stroke-dasharray="${c}" stroke-dashoffset="${off}" transform="rotate(-90 50 50)" data-key="${key}" data-prop="offset" data-to="${off}" style="transition:stroke-dashoffset .9s var(--ease),stroke .5s"/></svg>`;
+const WAVE = '<svg class="wave %c" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="M0 10 Q25 0 50 10 T100 10 T150 10 T200 10 V20 H0Z"/></svg>';
+let lastDrop = false;
+// a round glass that fills with a moving wave; the level glides to its new height
+function waterFill(pct, key) {
+  const h = Math.min(100, Math.round(pct * 100));
+  return `<div class="wcirc ${pct >= 1 ? 'full' : ''}">
+    <div class="wfill" data-key="${key}" data-prop="height" data-to="${h}" style="height:${h}%">${WAVE.replace('%c', 'w1')}${WAVE.replace('%c', 'w2')}</div>
+    <i class="bub b1"></i><i class="bub b2"></i><i class="bub b3"></i>
+    <span class="wpct">${Math.round(pct * 100)}%</span>${lastDrop ? '<i class="wdrop"></i><i class="wsplash"></i>' : ''}</div>`;
 }
 const barHtml = (key, pct, cls = '', style = '', fill = '') => `<div class="bar ${cls}" style="${style}"><i data-key="${key}" data-prop="width" data-to="${pct}" style="width:${pct}%;${fill ? 'background:' + fill : ''}"></i></div>`;
 function habitRow(h, d) {
@@ -296,7 +303,7 @@ function viewToday(v) {
     </div>
     <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Hydration</h2>
-    <div class="glass card"><div class="row">${ring(wp, 'water' + d, wp >= 1 ? 'var(--ok)' : 'var(--accent)')}
+    <div class="glass card"><div class="row">${waterFill(wp, 'water' + d)}
       <div class="grow"><div class="name" style="font-size:24px">${w} / ${S.water.goal} ml</div>
       <div class="meta">${wp >= 1 ? 'Goal reached 💧' : Math.max(0, S.water.goal - w) + ' ml to go'}</div></div></div>
       <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="watercustom">Custom</button><button data-act="water" data-ml="-1">Undo</button></div></div>
@@ -665,7 +672,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.0</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.1</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -711,6 +718,9 @@ const HABIT_TEMPLATES = [
   { name: 'Learn English', cat: 'Knowledge', type: 'num', target: 15, unit: 'min' },
   { name: 'Call a friend', cat: 'Social', type: 'bool' },
   { name: 'Skincare', cat: 'Looks', type: 'bool' },
+  { name: 'Make the bed', cat: 'General', type: 'bool' },
+  { name: 'Plan the day', cat: 'General', type: 'bool' },
+  { name: 'No phone before bed', cat: 'General', type: 'bool' },
 ];
 const UNITS = ['kcal', 'ml', 'l', 'reps', 'sets', 'min', 'h', 'km', 'steps', 'g', 'kg', '€', 'pages'];
 function habitSheet(h, isNew) {
@@ -813,7 +823,7 @@ function addWater(d, ml) {
   if (ml < 0) {
     const last = hist.pop();
     S.water.log[d] = Math.max(0, cur - (last === undefined ? cur : last));
-  } else { hist.push(ml); S.water.log[d] = cur + ml; }
+  } else { hist.push(ml); S.water.log[d] = cur + ml; lastDrop = true; }
   if (ml > 0 && cur < S.water.goal && cur + ml >= S.water.goal) celebrate('💧 Water goal reached!');
   buzz(); tone(480, .1); save(); render();
 }
