@@ -3,6 +3,13 @@
 
 const CATS = ['Physique', 'Money', 'Social', 'Knowledge', 'Looks'];
 const CATCOL = { Physique: '#ff7a59', Money: '#6ee7a8', Social: '#6fb5ff', Knowledge: '#b794f6', Looks: '#ff8fc7' };
+const CATICON = {
+  Physique: '<svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>',
+  Money: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.4c-.6-.9-1.6-1.3-2.8-1.3-1.5 0-2.6.7-2.6 1.9 0 2.7 5.6 1.3 5.6 3.9 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.5-3-1.5M12 6.5v1.6M12 15.9v1.6"/></svg>',
+  Social: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.6a3 3 0 0 1 0 5.8M18 14.2c1.8.7 3 2.3 3 4.8"/></svg>',
+  Knowledge: '<svg viewBox="0 0 24 24"><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z"/><path d="M12 6v13.5"/></svg>',
+  Looks: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>',
+};
 const MILESTONES = [7, 30, 100, 200, 365];
 const KEY = 'si-data-v1';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -178,18 +185,31 @@ function ring(pct, size = 96, color = 'var(--accent)') {
   return `<svg class="water-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="${r}" stroke="rgba(255,255,255,.1)"/><circle cx="50" cy="50" r="${r}" stroke="${color}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(1, pct))}" transform="rotate(-90 50 50)" style="transition:stroke-dashoffset .8s var(--ease)"/></svg>`;
 }
 function habitRow(h, d) {
-  const done = isDone(h, d), rest = isRest(h, d) && !done;
-  const left = h.restLimit ? Math.max(0, h.restLimit - restsUsedThisPeriod(h, d) + (rest ? 1 : 0)) : 0;
+  const done = isDone(h, d), rest = isRest(h, d) && !done, col = CATCOL[h.cat] || '#fff';
   const hs = habitStreak(h);
-  const control = h.type === 'num'
-    ? `<div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val" data-act="typeval" data-id="${h.id}">${value(h, d)} ${esc(h.unit)}</span><button data-act="inc" data-id="${h.id}">+</button></div>`
-    : `<button class="check ${done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`;
-  const restBtn = h.restLimit
-    ? `<button class="btn small" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest' : `Rest day (${left} left)`}</button>` : '';
-  const pct = h.type === 'num' ? `<div class="bar ${isOver(h, d) ? 'red' : ''}" style="margin-top:10px"><i style="width:${Math.min(100, value(h, d) / h.target * 100)}%"></i></div>${isOver(h, d) ? '<div class="meta" style="color:#ff8a8a;margin-top:6px">Over the limit</div>' : ''}` : '';
-  return `<div class="glass card"><div class="row"><div class="grow" data-act="edit" data-id="${h.id}"><div class="name">${esc(h.name)}</div>
-    <div class="meta"><span class="chip">${h.cat}</span>${hs.cur ? '🔥 ' + hs.cur : 'No streak yet'}${h.type === 'num' ? ` · ${isMax(h) ? 'limit' : 'goal'} ${h.target} ${esc(h.unit)}` : ''}</div></div>${control}</div>${pct}
-    ${restBtn ? `<div style="margin-top:10px">${restBtn}</div>` : ''}</div>`;
+  const check = h.type === 'bool'
+    ? `<button class="tcheck ${done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`
+    : `<button class="tcheck ${done ? 'on' : rest ? 'rest' : ''} ${isOver(h, d) ? 'over' : ''}" data-act="${done ? 'noop' : 'inc'}" data-id="${h.id}">${done ? '✓' : rest ? '☾' : '+'}</button>`;
+  const num = h.type === 'num' ? `<div class="tnum"><div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val" data-act="typeval" data-id="${h.id}">${value(h, d)}<small> / ${h.target} ${esc(h.unit)}</small></span><button data-act="inc" data-id="${h.id}">+</button></div>
+    <div class="bar ${isOver(h, d) ? 'red' : ''}" style="margin-top:8px"><i style="width:${Math.min(100, value(h, d) / h.target * 100)}%"></i></div></div>` : '';
+  return `<div class="tile ${done ? 'done' : ''}" style="--c:${col}">
+    <div class="ttop"><div class="ticon">${CATICON[h.cat] || ''}</div>${check}</div>
+    <div class="tbody" data-act="detail" data-id="${h.id}"><div class="tname">${esc(h.name)}</div>
+      <div class="tmeta">${hs.cur ? '🔥 ' + hs.cur + (hs.cur === 1 ? ' day' : ' days') : h.cat}${h.type === 'num' ? (isMax(h) ? ' · max' : '') : ''}${isOver(h, d) ? ' · <span style="color:#ff8a8a">over</span>' : ''}</div></div>${num}</div>`;
+}
+const tiles = html => `<div class="tiles">${html}</div>`;
+function detailSheet(h) {
+  const d = selDay, hs = habitStreak(h), col = CATCOL[h.cat];
+  const sched = !h.days ? 'Every day' : h.days.slice().sort().map(i => DOW_NAMES[i]).join(', ');
+  const rest = isRest(h, d) && !isDone(h, d);
+  const left = h.restLimit ? Math.max(0, h.restLimit - restsUsedThisPeriod(h, d) + (rest ? 1 : 0)) : 0;
+  openSheet(`<div class="dhead" style="--c:${col}"><div class="ticon big">${CATICON[h.cat] || ''}</div><div><h3 style="margin:0">${esc(h.name)}</h3><div class="meta">${h.cat}</div></div></div>
+    ${h.desc ? `<div class="desc">${esc(h.desc)}</div>` : '<div class="desc dim">No description yet. Tap Edit to add details, for example a weekly plan.</div>'}
+    <div class="facts"><div><span>Schedule</span><b>${sched}</b></div>
+      ${h.type === 'num' ? `<div><span>${isMax(h) ? 'Daily limit' : 'Daily goal'}</span><b>${h.target} ${esc(h.unit)}</b></div>` : ''}
+      <div><span>Streak</span><b>🔥 ${hs.cur} (best ${hs.best})</b></div>
+      ${h.restLimit ? `<div><span>Rest days left</span><b>${left} this ${h.restPer}</b></div>` : ''}</div>
+    <div class="actions">${h.restLimit ? `<button class="btn" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest day' : 'Take rest day'}</button>` : ''}<button class="btn" data-act="edit" data-id="${h.id}">Edit</button><button class="btn primary" data-act="closesheet">Close</button></div>`);
 }
 function viewToday(v) {
   const d = selDay, isToday = d === today();
@@ -215,7 +235,7 @@ function viewToday(v) {
       <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="water" data-ml="-1">Undo</button></div></div>
     <h2>Habits <button class="btn small primary" data-act="newhabit">+ New</button></h2>
     <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
-    ${shown.length ? shown.map(h => habitRow(h, d)).join('') : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
+    ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Reflection saved ✓' : 'Reflect on your day'}</div><div class="meta">7 quick taps, no typing</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
@@ -246,7 +266,7 @@ function viewCalendar(v) {
     <div class="glass cal">${cells}</div>
     <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly done (brighter = more)</span><span><i style="background:var(--rest)"></i>Rest only</span></div>
     <h2>${parse(sel).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
-    ${due.length ? due.map(h => habitRow(h, sel)).join('') : '<div class="glass empty">No habits due on this day.</div>'}
+    ${due.length ? tiles(due.map(h => habitRow(h, sel)).join('')) : '<div class="glass empty">No habits due on this day.</div>'}
     <p class="hint">Tap a habit to tick it for any past day.</p>`;
 }
 
@@ -410,7 +430,7 @@ function viewMore(v) {
     <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
       <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
       <input id="importfile" type="file" accept="application/json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 5</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 6</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -450,6 +470,7 @@ function habitSheet(h) {
       <label>Daily target</label><input id="htarget" type="number" inputmode="decimal" value="${nh.target}">
       <label>Unit</label>${segHtml('unit', ['kcal', 'ml', 'l', 'reps', 'min', 'h', 'km', 'g', 'kg', 'pages'].map(u => [u, u]), nh.unit)}
     </div>
+    <label>Description (optional)</label><textarea id="hdesc" rows="4" placeholder="e.g. Mon: chest, Tue: legs, Wed: back ...">${esc(nh.desc || '')}</textarea>
     <label>Days</label>${segHtml('days', DOW_NAMES.map((n, i) => [i, n]), dayList.map(String), true)}
     <label>Rest days allowed (0 = none)</label><input id="hrest" type="number" inputmode="numeric" min="0" value="${nh.restLimit}">
     <label>Per</label>${segHtml('restper', [['week', 'Week'], ['month', 'Month']], nh.restPer)}
@@ -534,7 +555,7 @@ document.addEventListener('click', e => {
       if (r.includes(h.id)) S.rests[d] = r.filter(x => x !== h.id);
       else if (restsUsedThisPeriod(h, d) < h.restLimit) { r.push(h.id); if (S.logs[d]) delete S.logs[d][h.id]; }
       else toast('No rest days left for this period');
-      buzz(); save(); render(); checkMilestone(); break;
+      buzz(); save(); closeSheet(); render(); checkMilestone(); break;
     }
     case 'typeval':
       openSheet(`<h3>${esc(h.name)}</h3><label>Value for this day (${esc(h.unit)})</label><input id="tval" type="number" inputmode="decimal" value="${value(h, d) || ''}" placeholder="0">
@@ -565,7 +586,9 @@ document.addEventListener('click', e => {
       openSheet(`<h3>Monthly income goal</h3><label>Goal per month (€)</label><input id="igoal" type="number" inputmode="numeric" value="${S.income.goal}">
         <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="saveigoal">Save</button></div>`); break;
     case 'saveigoal': S.income.goal = Math.max(1, parseInt($('#igoal').value) || 1000); save(); closeSheet(); render(); break;
-    case 'edit': habitSheet(h); break;
+    case 'detail': detailSheet(h); break;
+    case 'noop': break;
+    case 'edit': closeSheet(); habitSheet(h); break;
     case 'newhabit': habitSheet(); break;
     case 'savehabit': {
       const name = $('#hname').value.trim();
@@ -576,7 +599,7 @@ document.addEventListener('click', e => {
         unit: segVal('unit') || 'min', mode: segVal('hmode') || 'min', target: Math.max(1, parseFloat($('#htarget').value) || 1),
         days: segVals('days').length === 7 ? null : segVals('days').map(Number),
         restLimit: Math.max(0, parseInt($('#hrest').value) || 0), restPer: segVal('restper') || 'week',
-        created: h ? h.created : today(),
+        created: h ? h.created : today(), desc: $('#hdesc').value.trim(),
       };
       if (obj.days && !obj.days.length) obj.days = null;
       if (h) Object.assign(h, obj); else S.habits.push(obj);
