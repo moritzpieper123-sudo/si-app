@@ -210,13 +210,37 @@ let lastTab = null, lastPop = null;
 const prevAnim = {};
 function go(t) { tab = t; render(); window.scrollTo({ top: 0 }); }
 // bars and rings are rebuilt on every render, so animate them from their previous value
-function runAnims() {
+const prevCount = {};
+const cnt = (key, n, extra = '') => `<span data-count="${n}" data-ck="${key}" ${extra}>${extra.includes('loc') ? Number(n).toLocaleString('en-GB') : n}</span>`;
+const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// numbers count up from zero when a screen opens, and from their old value when they change
+function runCounts(enter) {
+  document.querySelectorAll('[data-count]').forEach(el => {
+    const key = el.dataset.ck, to = Number(el.dataset.count), prev = prevCount[key];
+    prevCount[key] = to;
+    const from = enter || prev === undefined ? 0 : prev;
+    const show = v => { el.textContent = el.dataset.fmt === 'loc' ? Math.round(v).toLocaleString('en-GB') : String(Math.round(v)); };
+    if (from === to || reduceMotion()) { show(to); return; }
+    const t0 = performance.now(), dur = enter ? 1100 : 800;
+    show(from);
+    (function tick(now) {
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      show(from + (to - from) * e);
+      if (k < 1) requestAnimationFrame(tick);
+    })(t0);
+  });
+}
+function runAnims(enter) {
   document.querySelectorAll('[data-key]').forEach(el => {
-    const key = el.dataset.key, to = el.dataset.to, from = prevAnim[key];
+    const key = el.dataset.key, to = el.dataset.to, p = el.dataset.prop;
+    // when a screen opens, bars and the water level rise from empty; otherwise they glide from their last value
+    const from = enter && p !== 'offset' ? 0 : prevAnim[key];
     prevAnim[key] = to;
     if (from === undefined || from === to) return;
-    const set = v => { const p = el.dataset.prop; if (p === 'width') el.style.width = v + '%'; else if (p === 'height') el.style.height = v + '%'; else el.style.strokeDashoffset = v; };
-    set(from); void el.getBoundingClientRect(); set(to);
+    if (reduceMotion() || !el.animate) return;
+    const prop = p === 'offset' ? 'strokeDashoffset' : p, unit = p === 'offset' ? '' : '%';
+    // the inline style already holds the final value; the animation just plays from the old one
+    el.animate([{ [prop]: from + unit }, { [prop]: to + unit }], { duration: p === 'height' ? 1500 : 900, easing: 'cubic-bezier(.22,.9,.3,1)' });
   });
 }
 function render() {
@@ -237,7 +261,7 @@ function render() {
   v.insertAdjacentHTML('afterbegin', tab === 'more'
     ? `<button class="hbtn" data-tab="today" aria-label="Back"><svg viewBox="0 0 24 24" class="o"><path d="M15 5l-7 7 7 7"/></svg></button>`
     : `<button class="hbtn" data-tab="more" aria-label="Settings">${IC.gear}</button>`);
-  runAnims();
+  runAnims(enter); runCounts(enter);
   lastPop = null; lastDrop = false;
 }
 document.addEventListener('click', e => {
@@ -281,7 +305,7 @@ function waterFill(pct, key) {
   return `<div class="wcirc ${pct >= 1 ? 'full' : ''}">
     <div class="wfill" data-key="${key}" data-prop="height" data-to="${h}" style="height:${h}%">${WAVE.replace('%c', 'w1')}${WAVE.replace('%c', 'w2')}</div>
     <i class="bub b1"></i><i class="bub b2"></i><i class="bub b3"></i>
-    <span class="wpct">${Math.round(pct * 100)}%</span>${lastDrop ? '<i class="wdrop"></i><i class="wsplash"></i>' : ''}</div>`;
+    <span class="wpct">${cnt('wpct' + key, Math.round(pct * 100))}%</span>${lastDrop ? '<i class="wdrop"></i><i class="wsplash"></i>' : ''}</div>`;
 }
 const barHtml = (key, pct, cls = '', style = '', fill = '') => `<div class="bar ${cls}" style="${style}"><i data-key="${key}" data-prop="width" data-to="${pct}" style="width:${pct}%;${fill ? 'background:' + fill : ''}"></i></div>`;
 function weekDots(h, d) {
@@ -336,14 +360,14 @@ function viewToday(v) {
     <h1>${isToday ? greeting : parse(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
     <p class="sub">${isToday ? parse(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) + (allDone ? ' · <span style="color:var(--ok)">All done today ✓</span>' : '') : '<a data-act="gotoday" style="color:var(--accent)">Back to today</a>'}</p>
     <div class="hero">
-      <div class="glass"><b>🔥 ${si.cur}</b><span>Day streak</span></div>
-      <div class="glass"><b>${st.due ? Math.round(st.ratio * 100) : 0}%</b><span>Done</span></div>
-      <div class="glass"><b>${si.best}</b><span>Best streak</span></div>
+      <div class="glass"><b>🔥 ${cnt('h-streak', si.cur)}</b><span>Day streak</span></div>
+      <div class="glass"><b>${cnt('h-done' + d, st.due ? Math.round(st.ratio * 100) : 0)}%</b><span>Done</span></div>
+      <div class="glass"><b>${cnt('h-best', si.best)}</b><span>Best streak</span></div>
     </div>
     <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Hydration</h2>
     <div class="glass card"><div class="row">${waterFill(wp, 'water' + d)}
-      <div class="grow"><div class="name" style="font-size:24px">${w} / ${S.water.goal} ml</div>
+      <div class="grow"><div class="name" style="font-size:24px">${cnt('wml' + d, w)} / ${S.water.goal} ml</div>
       <div class="meta">${wp >= 1 ? 'Goal reached 💧' : Math.max(0, S.water.goal - w) + ' ml to go'}</div></div></div>
       <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="watercustom">Custom</button><button data-act="water" data-ml="-1">Undo</button></div></div>
     <h2>Habits <button class="btn small primary" data-act="newhabit">+ New</button></h2>
@@ -404,7 +428,7 @@ function viewGoals(v) {
       }
       return `<div class="goalcard"><div class="grow" data-act="editgoal" data-id="${g.id}">
         <div class="gtitle">${esc(g.title)}</div>
-        <div class="gpct">${pct}%${g.mode === 'num' ? `<small> ${g.progress}/${g.target} ${esc(g.unit || '')}</small>` : ''}</div>
+        <div class="gpct">${cnt('g' + g.id, pct)}%${g.mode === 'num' ? `<small> ${g.progress}/${g.target} ${esc(g.unit || '')}</small>` : ''}</div>
         ${barHtml('gb:' + g.id, pct, g.done ? 'green' : '', 'margin-top:12px')}
         ${g.desc ? `<div class="gdesc">${esc(g.desc)}</div>` : ''}
         <div class="meta" style="margin-top:8px"><span class="chip" style="background:color-mix(in srgb,${CATCOL[g.cat]} 22%,transparent);color:${CATCOL[g.cat]}">${g.cat}</span></div></div>
@@ -459,10 +483,10 @@ function viewIncome(v) {
   const mk = mkey(now);
   v.innerHTML = `<h1>Income</h1><p class="sub">Your monthly income sources.</p>
     <div class="metric"><div class="mhead"><em>Income</em><span>/MONTH</span></div>
-      <div class="mval"><small>€</small>${Math.round(cur).toLocaleString('en-GB')}<span class="mgoal"><b style="color:var(--ok)">${pct}%</b> ↗ ${eur(goal)}</span></div></div>
+      <div class="mval"><small>€</small>${cnt('inc', Math.round(cur), 'data-fmt="loc"')}<span class="mgoal"><b style="color:var(--ok)">${cnt('inc-pct', pct)}%</b> ↗ ${eur(goal)}</span></div></div>
     ${S.income.sources.length ? incomeChart(vals, goal) : '<div class="empty">Add your first income source to see the graph.</div>'}
     <div class="axis">${months.map((m, i) => i % 2 ? '' : `<span>${m.toLocaleDateString('en-GB', { month: 'short' })}</span>`).join('')}</div>
-    <div class="hero" style="margin-top:6px"><div class="pill"><b>${diff === null ? '–' : (diff >= 0 ? '+' : '') + diff + '%'}</b><span>vs last month</span></div><div class="pill"><b>${eur(total12)}</b><span>last 12 months</span></div></div>
+    <div class="hero" style="margin-top:6px"><div class="pill"><b>${diff === null ? '–' : (diff >= 0 ? '+' : '') + diff + '%'}</b><span>vs last month</span></div><div class="pill"><b>€${cnt('inc-12', Math.round(total12), 'data-fmt="loc"')}</b><span>last 12 months</span></div></div>
     <h2>Sources</h2>
     ${S.income.sources.length ? S.income.sources.map(sr => `<div class="card flat row" data-act="editsrc" data-id="${sr.id}"><div class="grow"><div class="name">${esc(sr.name)}</div><div class="meta">${sr.recurring ? 'Monthly, recurring' : 'One month only'}</div></div><b class="amt">${eur(srcValue(sr, mk))}</b></div>`).join('') : ''}
     <div class="actions"><button class="btn primary" data-act="newsrc">+ Add source</button><button class="btn" data-act="incgoal">Monthly goal</button></div>`;
@@ -600,7 +624,7 @@ function insightsHtml() {
     return qs ? `<div class="meta" style="margin:12px 0 2px">${g}</div>${qs}` : '';
   }).join('');
   const ins = computeInsights();
-  return `<div class="glass card"><div class="row"><div class="grow"><div class="meta">Wellbeing, last 7 days</div><div class="mval" style="font-size:44px;margin-top:4px">${thisW === null ? '–' : Math.round(thisW) + '%'}</div></div>
+  return `<div class="glass card"><div class="row"><div class="grow"><div class="meta">Wellbeing, last 7 days</div><div class="mval" style="font-size:44px;margin-top:4px">${thisW === null ? '–' : cnt('s-well', Math.round(thisW)) + '%'}</div></div>
       ${delta === null ? '' : `<div class="${delta >= 0 ? 'up' : 'down'}" style="font-size:15px">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} pts vs last week</div>`}</div>
       ${spark(series)}<div class="meta" style="margin-top:6px">Last 14 days</div></div>
     <div class="glass card"><div class="meta" style="margin-bottom:10px">Rating per area, last 7 days (0 to 100)</div>${grow}
@@ -620,11 +644,12 @@ function showSummary(d) {
   const high = cs.slice().sort((a, b) => b[1] - a[1])[0], low = cs.slice().sort((a, b) => a[1] - b[1])[0];
   const ins = computeInsights();
   const tip = ins && ins.length ? ins[0].text : `Keep going: after ${Math.max(0, 7 - reflDates().length)} more reflection(s) the app shows which habits lift your mood.`;
-  openSheet(`<h3>Day score</h3><div class="mval" style="font-size:64px;margin:6px 0">${o}%</div><div class="meta" style="font-size:14px">${cmp}</div>
+  openSheet(`<h3>Day score</h3><div class="mval" style="font-size:64px;margin:6px 0">${cnt('daysc', o)}%</div><div class="meta" style="font-size:14px">${cmp}</div>
     <div style="margin-top:14px">${gs.map(([g, v]) => { const col = g === 'Day' ? 'var(--accent)' : CATCOL[g]; return `<div class="mrow cat"><span><b class="dot" style="background:${col}"></b>${g}</span><div class="bar"><i style="width:${v}%;background:${col}"></i></div><b>${v}</b><em></em></div>`; }).join('')}</div>
     ${high && low && high[0] !== low[0] ? `<div class="facts"><div><span>Strongest area</span><b>${high[0]}</b></div><div><span>Needs attention</span><b>${low[0]}</b></div></div>` : ''}
     <div class="desc" style="margin-top:12px">${tip}</div>
     <div class="actions"><button class="btn primary" data-act="closesheet">Close</button></div>`);
+  delete prevCount.daysc; runCounts(false);
 }
 /* ---------- stats ---------- */
 function viewStats(v) {
@@ -673,7 +698,7 @@ function viewStats(v) {
     return `<div class="mrow cat"><span><b class="dot" style="background:${CATCOL[c]}"></b>${c}</span>${barHtml('cr:' + c, v, '', '', CATCOL[c])}<b>${v}</b><em>%</em></div>`;
   }).join('');
   v.innerHTML = `<h1>Stats</h1><p class="sub">Your progress at a glance.</p>
-    <div class="hero"><div class="glass"><b>${weekPct}%</b><span>This week</span></div><div class="glass"><b>🔥 ${si.cur}</b><span>Streak</span></div><div class="glass"><b>${si.best}</b><span>Best streak</span></div></div>
+    <div class="hero"><div class="glass"><b>${cnt('s-week', weekPct)}%</b><span>This week</span></div><div class="glass"><b>🔥 ${cnt('s-streak', si.cur)}</b><span>Streak</span></div><div class="glass"><b>${cnt('s-best', si.best)}</b><span>Best streak</span></div></div>
     <h2>Insights <span>daily reflection</span></h2>${insightsHtml()}
     <h2>Last 7 days</h2>${bars(week.map(x => ({ l: DOW[dowMon(x.d)], h: x.r.ratio * 100 })))}
     <h2>Monthly completion</h2>${bars(monthly.map(x => ({ l: x.label, h: x.r * 100 })))}
@@ -711,7 +736,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.2</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.3</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
