@@ -98,14 +98,26 @@ function tone(freq = 660, dur = .12, vol = .05) {
 }
 
 /* ---------- habit logic ---------- */
-const habitDue = (h, d) => d >= h.created && (!h.archived || d < h.archived) && (!h.days || h.days.includes(dowMon(d)));
+const isWeekly = h => h.period === 'week';
+const habitActive = (h, d) => d >= h.created && (!h.archived || d < h.archived);
+// daily habits are due on their weekdays; weekly habits can be logged on any day of the week
+const habitDue = (h, d) => habitActive(h, d) && (isWeekly(h) || !h.days || h.days.includes(dowMon(d)));
 const isFuture = d => d > today();
 const isRest = (h, d) => (S.rests[d] || []).includes(h.id);
 const value = (h, d) => (S.logs[d] && S.logs[d][h.id]) || 0;
 const isMax = h => h.type === 'num' && h.mode === 'max';
 const isOver = (h, d) => isMax(h) && value(h, d) > h.target;
-const isDone = (h, d) => h.type === 'num' ? (isMax(h) ? value(h, d) > 0 && value(h, d) <= h.target : value(h, d) >= h.target) : value(h, d) >= 1;
-const hProgress = (h, d) => h.type === 'num' ? (isMax(h) ? (isDone(h, d) ? 1 : 0) : Math.min(1, value(h, d) / h.target)) : (value(h, d) ? 1 : 0);
+const isDone = (h, d) => isWeekly(h) ? value(h, d) > 0 : h.type === 'num' ? (isMax(h) ? value(h, d) > 0 && value(h, d) <= h.target : value(h, d) >= h.target) : value(h, d) >= 1;
+const hProgress = (h, d) => isWeekly(h) ? (value(h, d) > 0 ? 1 : 0) : h.type === 'num' ? (isMax(h) ? (isDone(h, d) ? 1 : 0) : Math.min(1, value(h, d) / h.target)) : (value(h, d) ? 1 : 0);
+// weekly habits: progress is counted over Monday to Sunday and never counts against a single day
+const weekDays = d => Array.from({ length: 7 }, (_, i) => addDays(weekStart(d), i));
+function weekValue(h, d) {
+  return weekDays(d).reduce((a, x) => a + (x > today() ? 0 : h.type === 'num' ? value(h, x) : (value(h, x) >= 1 ? 1 : 0)), 0);
+}
+const weekDone = (h, d) => isMax(h) ? weekValue(h, d) > 0 && weekValue(h, d) <= h.target : weekValue(h, d) >= h.target;
+const weekOver = (h, d) => isMax(h) && weekValue(h, d) > h.target;
+// a weekly habit only joins a day's completion when you logged it that day, so it lifts a day but never hurts it
+const dueForDay = (h, d) => isWeekly(h) ? habitActive(h, d) && value(h, d) > 0 : habitDue(h, d);
 function restsUsedThisPeriod(h, d) {
   const per = h.restPer === 'month';
   let n = 0;
@@ -116,7 +128,7 @@ function restsUsedThisPeriod(h, d) {
   return n;
 }
 function dayStats(d, cat) {
-  const due = S.habits.filter(h => habitDue(h, d) && (!cat || h.cat === cat));
+  const due = S.habits.filter(h => dueForDay(h, d) && (!cat || h.cat === cat));
   if (!due.length) return { due: 0, done: 0, rest: 0, ratio: 0, complete: false };
   let done = 0, rest = 0;
   due.forEach(h => { if (isDone(h, d)) done++; else if (isRest(h, d)) rest++; });
@@ -141,6 +153,16 @@ function streakInfo(upTo = today()) {
 // share of due days in the last 30 that were done or rested (null if the habit had no due days yet)
 function rate30(h) {
   const t = today(); let due = 0, ok = 0;
+  if (isWeekly(h)) { // the last four finished weeks, plus this one if it is already met
+    for (let i = 0; i <= 4; i++) {
+      const w = addDays(weekStart(t), -7 * i);
+      if (addDays(w, 6) < h.created) continue;
+      const done = weekDone(h, w);
+      if (i === 0 && !done) continue;
+      due++; if (done) ok++;
+    }
+    return due ? Math.round(ok / due * 100) : null;
+  }
   for (let i = 0; i < 30; i++) {
     const d = addDays(t, -i);
     if (!habitDue(h, d)) continue;
@@ -152,6 +174,13 @@ function rate30(h) {
 function habitStreak(h) {
   let run = 0, best = 0;
   const t = today();
+  if (isWeekly(h)) {
+    for (let w = weekStart(h.created); w <= t; w = addDays(w, 7)) {
+      if (weekDone(h, w)) { run++; best = Math.max(best, run); }
+      else if (weekStart(t) !== w) run = 0;
+    }
+    return { cur: run, best };
+  }
   for (let d = h.created; d <= t; d = addDays(d, 1)) {
     if (!habitDue(h, d)) continue;
     if (isDone(h, d) || isRest(h, d)) { run++; best = Math.max(best, run); }
@@ -255,33 +284,43 @@ function waterFill(pct, key) {
     <span class="wpct">${Math.round(pct * 100)}%</span>${lastDrop ? '<i class="wdrop"></i><i class="wsplash"></i>' : ''}</div>`;
 }
 const barHtml = (key, pct, cls = '', style = '', fill = '') => `<div class="bar ${cls}" style="${style}"><i data-key="${key}" data-prop="width" data-to="${pct}" style="width:${pct}%;${fill ? 'background:' + fill : ''}"></i></div>`;
+function weekDots(h, d) {
+  return weekDays(d).map(x => `<i class="${value(h, x) >= 1 ? 'on' : ''} ${x === today() ? 'tdy' : ''}"></i>`).join('');
+}
 function habitRow(h, d) {
-  const done = isDone(h, d), rest = isRest(h, d) && !done, col = CATCOL[h.cat] || '#fff';
-  const hs = habitStreak(h);
-  const check = h.type === 'bool'
-    ? `<button class="tcheck ${done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`
-    : `<button class="tcheck ${done ? 'on' : rest ? 'rest' : ''} ${isOver(h, d) ? 'over' : ''}" data-act="${done ? 'noop' : 'inc'}" data-id="${h.id}">${done ? '✓' : rest ? '☾' : '+'}</button>`;
-  const num = h.type === 'num' ? `<div class="tnum"><div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val" data-act="typeval" data-id="${h.id}">${value(h, d)}<small> / ${h.target} ${esc(h.unit)}</small></span><button data-act="inc" data-id="${h.id}">+</button></div>
-    ${barHtml('hb:' + h.id + d, Math.min(100, Math.round(value(h, d) / h.target * 100)), isOver(h, d) ? 'red' : '', 'margin-top:8px')}</div>` : '';
+  const wk = isWeekly(h), col = CATCOL[h.cat] || '#fff', hs = habitStreak(h);
+  const done = wk ? weekDone(h, d) : isDone(h, d), rest = !wk && isRest(h, d) && !done;
+  const loggedToday = wk && value(h, d) > 0;
+  const unit = wk && h.type === 'bool' ? '×' : ' ' + esc(h.unit);
+  const wv = wk ? weekValue(h, d) : 0;
+  let check;
+  if (h.type === 'bool') check = `<button class="tcheck ${wk ? (loggedToday ? 'on' : '') : done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`;
+  else check = `<button class="tcheck ${done ? 'on' : rest ? 'rest' : ''} ${(wk ? weekOver(h, d) : isOver(h, d)) ? 'over' : ''}" data-act="${done ? 'noop' : 'inc'}" data-id="${h.id}">${done ? '✓' : rest ? '☾' : '+'}</button>`;
+  const shown = wk ? wv : value(h, d), over = wk ? weekOver(h, d) : isOver(h, d);
+  const num = h.type === 'num' ? `<div class="tnum"><div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val" data-act="typeval" data-id="${h.id}">${Math.round(shown * 10) / 10}<small> / ${h.target} ${esc(h.unit)}${wk ? ' wk' : ''}</small></span><button data-act="inc" data-id="${h.id}">+</button></div>
+    ${barHtml('hb:' + h.id + d, Math.min(100, Math.round(shown / h.target * 100)), over ? 'red' : '', 'margin-top:8px')}</div>`
+    : wk ? `<div class="tnum"><div class="wkrow"><b>${wv}<small> / ${h.target}× this week</small></b></div><div class="wdots" style="--c:${col}">${weekDots(h, d)}</div></div>` : '';
+  const streakTxt = hs.cur ? '🔥 ' + hs.cur + (wk ? (hs.cur === 1 ? ' week' : ' weeks') : (hs.cur === 1 ? ' day' : ' days')) : (wk ? 'Weekly' : h.cat);
   return `<div class="tile ${done ? 'done' : ''} ${lastPop === h.id ? 'pop' : ''} ${isFuture(d) ? 'future' : ''}" style="--c:${col}">
     <div class="ttop"><div class="ticon">${CATICON[h.cat] || ''}</div>${check}</div>
     <div class="tbody" data-act="detail" data-id="${h.id}"><div class="tname">${esc(h.name)}</div>
-      <div class="tmeta">${hs.cur ? '🔥 ' + hs.cur + (hs.cur === 1 ? ' day' : ' days') : h.cat}${h.type === 'num' ? (isMax(h) ? ' · max' : '') : ''}${isOver(h, d) ? ' · <span style="color:#ff8a8a">over</span>' : ''}</div></div>${num}</div>`;
+      <div class="tmeta">${streakTxt}${isMax(h) ? ' · max' : ''}${over ? ' · <span style="color:#ff8a8a">over</span>' : ''}${wk && h.type === 'num' && value(h, d) ? ' · today ' + value(h, d) : ''}</div></div>${num}</div>`;
 }
 const tiles = html => `<div class="tiles">${html}</div>`;
 function detailSheet(h) {
   const d = selDay, hs = habitStreak(h), col = CATCOL[h.cat];
-  const sched = !h.days ? 'Every day' : h.days.slice().sort().map(i => DOW_NAMES[i]).join(', ');
-  const rest = isRest(h, d) && !isDone(h, d);
+  const wk = isWeekly(h);
+  const sched = wk ? (h.type === 'bool' ? `${h.target}× per week` : `${h.target} ${h.unit} per week`) : !h.days ? 'Every day' : h.days.slice().sort().map(i => DOW_NAMES[i]).join(', ');
+  const rest = !wk && isRest(h, d) && !isDone(h, d);
   const left = h.restLimit ? Math.max(0, h.restLimit - restsUsedThisPeriod(h, d) + (rest ? 1 : 0)) : 0;
   openSheet(`<div class="dhead" style="--c:${col}"><div class="ticon big">${CATICON[h.cat] || ''}</div><div><h3 style="margin:0">${esc(h.name)}</h3><div class="meta">${h.cat}</div></div></div>
     ${h.desc ? `<div class="desc">${esc(h.desc)}</div>` : '<div class="desc dim">No description yet. Tap Edit to add details, for example a weekly plan.</div>'}
     <div class="facts"><div><span>Schedule</span><b>${sched}</b></div>
-      ${h.type === 'num' ? `<div><span>${isMax(h) ? 'Daily limit' : 'Daily goal'}</span><b>${h.target} ${esc(h.unit)}</b></div>` : ''}
-      <div><span>Streak</span><b>🔥 ${hs.cur} (best ${hs.best})</b></div>
+      ${wk ? `<div><span>This week</span><b>${Math.round(weekValue(h, d) * 10) / 10}${h.type === 'bool' ? '×' : ' ' + esc(h.unit)} of ${h.target}</b></div>` : h.type === 'num' ? `<div><span>${isMax(h) ? 'Daily limit' : 'Daily goal'}</span><b>${h.target} ${esc(h.unit)}</b></div>` : ''}
+      <div><span>Streak</span><b>🔥 ${hs.cur}${wk ? ' wk' : ''} (best ${hs.best})</b></div>
       <div><span>Last 30 days</span><b>${rate30(h) === null ? '–' : rate30(h) + '%'}</b></div>
-      ${h.restLimit ? `<div><span>Rest days left</span><b>${left} this ${h.restPer}</b></div>` : ''}</div>
-    <div class="actions">${h.restLimit ? `<button class="btn" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest day' : 'Take rest day'}</button>` : ''}<button class="btn" data-act="edit" data-id="${h.id}">Edit</button></div>
+      ${h.restLimit && !wk ? `<div><span>Rest days left</span><b>${left} this ${h.restPer}</b></div>` : ''}</div>
+    <div class="actions">${h.restLimit && !wk ? `<button class="btn" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest day' : 'Take rest day'}</button>` : ''}<button class="btn" data-act="edit" data-id="${h.id}">Edit</button></div>
     <div class="actions"><button class="btn" data-act="archive" data-id="${h.id}">Archive</button><button class="btn primary" data-act="closesheet">Close</button></div>`);
 }
 function viewToday(v) {
@@ -497,7 +536,7 @@ function computeInsights() {
     if (!hs.length) return;
     const full = [], part = [];
     dates.forEach(d => {
-      const due = hs.filter(h => habitDue(h, d));
+      const due = hs.filter(h => !isWeekly(h) && habitDue(h, d));
       const g = rGroup(S.reflections[d], c);
       if (!due.length || g === null) return;
       (due.every(h => isDone(h, d) || isRest(h, d)) ? full : part).push(g);
@@ -642,7 +681,7 @@ function viewStats(v) {
     <h2>Consistency <span>last 30 days</span></h2><div class="cons">${cons}</div>
     ${catRows ? `<h2>By category <span>last 30 days</span></h2><div class="glass card">${catRows}</div>` : ''}
     <h2>Habit streaks</h2>
-    ${perHabit.length ? perHabit.map(({ h, s, r }) => `<div class="card flat row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta"><span class="chip" style="background:color-mix(in srgb,${CATCOL[h.cat]} 22%,transparent);color:${CATCOL[h.cat]}">${h.cat}</span>Best ${s.best}${r === null ? '' : ' · ' + r + '% (30 days)'}</div></div><b style="font-size:22px">🔥 ${s.cur}</b></div>`).join('') : '<div class="glass empty">Add habits to see streaks.</div>'}`;
+    ${perHabit.length ? perHabit.map(({ h, s, r }) => `<div class="card flat row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta"><span class="chip" style="background:color-mix(in srgb,${CATCOL[h.cat]} 22%,transparent);color:${CATCOL[h.cat]}">${h.cat}</span>Best ${s.best}${r === null ? '' : ' · ' + r + '% (30 days)'}</div></div><b style="font-size:22px">🔥 ${s.cur}${h.period === 'week' ? ' wk' : ''}</b></div>`).join('') : '<div class="glass empty">Add habits to see streaks.</div>'}`;
 }
 
 /* ---------- more / settings ---------- */
@@ -672,7 +711,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.1</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.2</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -699,7 +738,13 @@ document.addEventListener('click', e => {
   const seg = b.parentElement;
   if (seg.dataset.multi) b.classList.toggle('on');
   else { seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); }
-  if (seg.dataset.seg === 'type') $('#numfields').style.display = b.dataset.v === 'num' ? 'block' : 'none';
+  if (seg.dataset.seg === 'type' || seg.dataset.seg === 'period') {
+    const wk = segVal('period') === 'week', num = segVal('type') === 'num';
+    $('#numfields').style.display = num ? 'block' : 'none';
+    $('#weekfields').style.display = wk && !num ? 'block' : 'none';
+    $('#dayfields').style.display = wk ? 'none' : 'block';
+    $('#targetlabel').textContent = wk ? 'Weekly target' : 'Daily target';
+  }
   if (seg.dataset.seg === 'unit') $('#hunit').value = '';
   if (seg.dataset.seg === 'gmode') $('#gnumfields').style.display = b.dataset.v === 'num' ? 'block' : 'none';
 });
@@ -709,6 +754,9 @@ const segVals = n => [...document.querySelectorAll(`[data-seg="${n}"] button.on`
 const HABIT_TEMPLATES = [
   { name: 'Gym', cat: 'Physique', type: 'bool', desc: 'Mon: chest\nTue: back\nThu: legs\nFri: shoulders and arms' },
   { name: 'Tennis', cat: 'Physique', type: 'bool' },
+  { name: 'Workouts per week', cat: 'Physique', type: 'bool', period: 'week', target: 4 },
+  { name: 'Cardio minutes', cat: 'Physique', type: 'num', period: 'week', target: 150, unit: 'min' },
+  { name: 'Videos per week', cat: 'Money', type: 'bool', period: 'week', target: 5 },
   { name: 'Calories under', cat: 'Physique', type: 'num', mode: 'max', target: 2500, unit: 'kcal' },
   { name: 'Protein', cat: 'Physique', type: 'num', target: 120, unit: 'g' },
   { name: 'Steps', cat: 'Physique', type: 'num', target: 10000, unit: 'steps' },
@@ -732,18 +780,25 @@ function habitSheet(h, isNew) {
     ${editing ? '' : `<label style="margin-top:0">Quick start</label><div class="seg tpl">${HABIT_TEMPLATES.map((t, i) => `<button type="button" data-act="tpl" data-i="${i}">${esc(t.name)}</button>`).join('')}</div>`}
     <label>Name</label><input id="hname" value="${esc(nh.name)}" placeholder="e.g. Workout">
     <label>Category</label>${segHtml('cat', CATS.map(c => [c, c]), nh.cat)}
+    <label>Repeats</label>${segHtml('period', [['day', 'Daily'], ['week', 'Weekly']], nh.period || 'day')}
     <label>Type</label>${segHtml('type', [['bool', 'Yes / No'], ['num', 'Number']], nh.type)}
+    <div id="weekfields" style="display:${nh.period === 'week' && nh.type === 'bool' ? 'block' : 'none'}">
+      <label>Times per week</label><input id="hweek" type="number" inputmode="numeric" min="1" max="7" value="${nh.period === 'week' && nh.type === 'bool' ? nh.target : 3}">
+      <p class="hint" style="margin:6px 0 0">Tick it on the days you do it. It counts as done once you reach this number in a week (Monday to Sunday).</p>
+    </div>
     <div id="numfields" style="display:${nh.type === 'num' ? 'block' : 'none'}">
       <label>Type of target</label>${segHtml('hmode', [['min', 'Reach at least'], ['max', 'Stay under']], nh.mode || 'min')}
-      <label>Daily target</label><input id="htarget" type="number" inputmode="decimal" value="${nh.target}">
+      <label id="targetlabel">${nh.period === 'week' ? 'Weekly target' : 'Daily target'}</label><input id="htarget" type="number" inputmode="decimal" value="${nh.target}">
       <label>Unit</label>${segHtml('unit', UNITS.map(u => [u, u]), known ? nh.unit : '')}
       <input id="hunit" value="${known ? '' : esc(nh.unit)}" placeholder="or type your own unit" style="margin-top:8px">
       <label>Step size for + and − (optional)</label><input id="hstep" type="number" inputmode="decimal" value="${nh.step || ''}" placeholder="automatic">
     </div>
     <label>Description (optional)</label><textarea id="hdesc" rows="4" placeholder="e.g. Mon: chest, Tue: legs, Wed: back ...">${esc(nh.desc || '')}</textarea>
+    <div id="dayfields" style="display:${nh.period === 'week' ? 'none' : 'block'}">
     <label>Days</label>${segHtml('days', DOW_NAMES.map((n, i) => [i, n]), dayList.map(String), true)}
     <label>Rest days allowed (0 = none)</label><input id="hrest" type="number" inputmode="numeric" min="0" value="${nh.restLimit || 0}">
     <label>Per</label>${segHtml('restper', [['week', 'Week'], ['month', 'Month']], nh.restPer || 'week')}
+    </div>
     <label>Start date</label><input id="hstart" type="date" value="${editing ? nh.created : today()}" max="${today()}">
     <div class="actions">${editing ? '<button class="btn danger" data-act="delhabit" data-id="' + h.id + '">Delete</button>' : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savehabit" data-id="${editing ? h.id : ''}">Save</button></div>`);
 }
@@ -893,8 +948,8 @@ document.addEventListener('click', e => {
       if (!name) { toast('Please enter a name'); break; }
       const type = segVal('type');
       const obj = {
-        id: h ? h.id : uid(), name, cat: segVal('cat') || 'Physique', type,
-        unit: $('#hunit').value.trim() || segVal('unit') || 'min', mode: segVal('hmode') || 'min', target: Math.max(1, parseFloat($('#htarget').value) || 1),
+        id: h ? h.id : uid(), name, cat: segVal('cat') || 'Physique', type, period: segVal('period') === 'week' ? 'week' : 'day',
+        unit: $('#hunit').value.trim() || segVal('unit') || 'min', mode: segVal('hmode') || 'min', target: Math.max(1, parseFloat(segVal('period') === 'week' && type === 'bool' ? $('#hweek').value : $('#htarget').value) || 1),
         step: parseFloat($('#hstep').value) > 0 ? parseFloat($('#hstep').value) : null,
         days: segVals('days').length === 7 ? null : segVals('days').map(Number),
         restLimit: Math.max(0, parseInt($('#hrest').value) || 0), restPer: segVal('restper') || 'week',
@@ -902,6 +957,7 @@ document.addEventListener('click', e => {
       };
       if (h && h.archived) obj.archived = h.archived;
       if (obj.days && !obj.days.length) obj.days = null;
+      if (obj.period === 'week') { obj.days = null; obj.restLimit = 0; }
       if (h) Object.assign(h, obj); else S.habits.push(obj);
       save(); closeSheet(); render(); break;
     }

@@ -289,3 +289,10 @@ button:active{transition-duration:.1s}
 .wsplash{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;border:2px solid rgba(255,255,255,.7);z-index:4;opacity:0;animation:splash .9s .55s ease-out forwards}
 @keyframes splash{0%{transform:scale(.2);opacity:.9}100%{transform:scale(4.6);opacity:0}}
 @media (prefers-reduced-motion:reduce){.wave,.bub,.wdrop,.wsplash{animation:none!important}}
+
+/* weekly habits */
+.wkrow{font-size:15px;font-weight:600}.wkrow small{font-size:11px;font-weight:400;color:rgba(255,255,255,.55)}
+.wdots{display:flex;gap:5px;margin-top:8px}
+.wdots i{flex:1;height:8px;border-radius:99px;background:rgba(255,255,255,.12);transition:background .4s,transform .3s}
+.wdots i.on{background:var(--c);box-shadow:0 0 10px color-mix(in srgb,var(--c) 55%,transparent)}
+.wdots i.tdy{outline:1.5px solid rgba(255,255,255,.6);outline-offset:1px}
