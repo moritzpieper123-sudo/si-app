@@ -18,7 +18,7 @@ const REFLECTION = [
   { id: 'mood', q: 'How is your mood today?', type: 'emoji' },
   { id: 'energy', q: 'How was your energy?', type: 'emoji' },
   { id: 'sleep', q: 'How did you sleep last night?', type: 'abc', opts: ['Great (7h or more)', 'Okay (5 to 7h)', 'Bad (under 5h)'] },
-  { id: 'stress', q: 'How stressed did you feel?', type: 'emoji' },
+  { id: 'calm', q: 'How calm and relaxed did you feel?', type: 'emoji' },
   { id: 'focus', q: 'How was your focus?', type: 'abc', opts: ['Sharp', 'Average', 'Scattered'] },
   { id: 'perf', q: 'How do you rate your performance today?', type: 'emoji' },
   { id: 'social', q: 'How did you feel around people?', type: 'abc', opts: ['Connected', 'Neutral', 'Withdrawn'] },
@@ -237,7 +237,7 @@ function viewToday(v) {
     <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
     ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
     <h2>Day reflection</h2>
-    <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Reflection saved ✓' : 'Reflect on your day'}</div><div class="meta">7 quick taps, no typing</div></div>
+    <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '7 quick taps, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
 `;
 }
@@ -364,6 +364,116 @@ function sourceSheet(sr) {
     <div class="actions">${sr ? '<button class="btn danger" data-act="delsrc" data-id="' + sr.id + '">Delete</button>' : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savesrc" data-id="${sr ? sr.id : ''}">Save</button></div>`);
 }
 
+
+/* ---------- reflection insights ---------- */
+const METRICS = [['mood', 'Mood'], ['energy', 'Energy'], ['sleep', 'Sleep'], ['calm', 'Calm'], ['focus', 'Focus'], ['perf', 'Performance'], ['social', 'Social']];
+const mLabel = id => (METRICS.find(m => m[0] === id) || [0, id])[1];
+// every answer becomes a score from 0 (worst) to 4 (best); A/B/C answers map to 4, 2, 0
+function rScore(r, id) {
+  if (!r || r[id] == null) return null;
+  const q = REFLECTION.find(x => x.id === id);
+  return q && q.type === 'abc' ? (2 - r[id]) * 2 : r[id];
+}
+function rOverall(r) {
+  const v = METRICS.map(m => rScore(r, m[0])).filter(x => x !== null);
+  return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length / 4 * 100) : null;
+}
+const reflDates = () => Object.keys(S.reflections).sort();
+const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+function periodAvg(from, to, id) {
+  const v = reflDates().filter(d => d >= from && d <= to).map(d => id ? rScore(S.reflections[d], id) : rOverall(S.reflections[d])).filter(x => x !== null);
+  return v.length ? mean(v) : null;
+}
+function computeInsights() {
+  const dates = reflDates();
+  if (dates.length < 7) return null;
+  const out = [];
+  const t = today();
+  // habits vs how you felt
+  S.habits.forEach(h => {
+    const days = dates.filter(d => d <= t && habitDue(h, d) && !isRest(h, d));
+    const yes = days.filter(d => isDone(h, d)), no = days.filter(d => !isDone(h, d));
+    if (yes.length < 3 || no.length < 3) return;
+    let best = null;
+    METRICS.forEach(([id]) => {
+      const a = yes.map(d => rScore(S.reflections[d], id)).filter(x => x !== null), b = no.map(d => rScore(S.reflections[d], id)).filter(x => x !== null);
+      if (a.length < 3 || b.length < 3) return;
+      const diff = mean(a) - mean(b);
+      if (!best || Math.abs(diff) > Math.abs(best.diff)) best = { id, diff };
+    });
+    if (best && Math.abs(best.diff) >= .5) out.push({ w: Math.abs(best.diff), text: `On days you did <b>${esc(h.name)}</b>, your ${mLabel(best.id).toLowerCase()} was ${best.diff > 0 ? 'higher' : 'lower'} by ${Math.abs(best.diff).toFixed(1)} of 4 points (${yes.length} days vs ${no.length}).`, good: best.diff > 0 });
+  });
+  // water goal vs mood and energy
+  const wy = dates.filter(d => (S.water.log[d] || 0) >= S.water.goal), wn = dates.filter(d => (S.water.log[d] || 0) < S.water.goal);
+  if (wy.length >= 3 && wn.length >= 3) {
+    const f = d => (rScore(S.reflections[d], 'energy') + rScore(S.reflections[d], 'mood')) / 2;
+    const diff = mean(wy.filter(d => !isNaN(f(d))).map(f)) - mean(wn.filter(d => !isNaN(f(d))).map(f));
+    if (Math.abs(diff) >= .5) out.push({ w: Math.abs(diff), text: `On days you hit your water goal, your mood and energy were ${diff > 0 ? 'higher' : 'lower'} by ${Math.abs(diff).toFixed(1)} points.`, good: diff > 0 });
+  }
+  // sleep vs the day
+  const good = dates.filter(d => rScore(S.reflections[d], 'sleep') === 4), bad = dates.filter(d => { const x = rScore(S.reflections[d], 'sleep'); return x !== null && x < 4; });
+  if (good.length >= 3 && bad.length >= 3) {
+    let best = null;
+    ['focus', 'perf', 'mood', 'energy'].forEach(id => {
+      const a = good.map(d => rScore(S.reflections[d], id)).filter(x => x !== null), b = bad.map(d => rScore(S.reflections[d], id)).filter(x => x !== null);
+      if (a.length < 3 || b.length < 3) return;
+      const diff = mean(a) - mean(b);
+      if (!best || Math.abs(diff) > Math.abs(best.diff)) best = { id, diff };
+    });
+    if (best && Math.abs(best.diff) >= .5) out.push({ w: Math.abs(best.diff), text: `After a great night of sleep, your ${mLabel(best.id).toLowerCase()} was ${best.diff > 0 ? 'higher' : 'lower'} by ${Math.abs(best.diff).toFixed(1)} points.`, good: best.diff > 0 });
+  }
+  // best and worst weekday
+  const byDow = {};
+  dates.forEach(d => { const o = rOverall(S.reflections[d]); if (o !== null) (byDow[dowMon(d)] = byDow[dowMon(d)] || []).push(o); });
+  const ds = Object.keys(byDow).filter(k => byDow[k].length >= 2).map(k => [k, mean(byDow[k])]).sort((a, b) => b[1] - a[1]);
+  if (ds.length >= 3 && ds[0][1] - ds[ds.length - 1][1] >= 10)
+    out.push({ w: (ds[0][1] - ds[ds.length - 1][1]) / 25, text: `Your best day is usually <b>${DOW_NAMES[ds[0][0]]}</b> (${Math.round(ds[0][1])}%), your toughest is <b>${DOW_NAMES[ds[ds.length - 1][0]]}</b> (${Math.round(ds[ds.length - 1][1])}%).`, good: null });
+  return out.sort((a, b) => b.w - a.w).slice(0, 5);
+}
+function spark(vals, w = 300, h = 54) {
+  const pts = vals.map((v, i) => v === null ? null : [i * (w / (vals.length - 1)), h - 4 - (h - 8) * v / 100]).filter(Boolean);
+  if (pts.length < 2) return '';
+  return `<svg viewBox="0 0 ${w} ${h}" class="spark" preserveAspectRatio="none"><path d="${smooth(pts)}" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke" class="draw"/></svg>`;
+}
+function insightsHtml() {
+  const dates = reflDates();
+  if (dates.length < 3) return `<div class="glass empty">Answer the daily reflection for a few days. After 3 days you see trends, after 7 days the app starts to show what actually helps you feel better.<br><b>${dates.length} of 7 days so far.</b></div>`;
+  const t = today();
+  const days14 = Array.from({ length: 14 }, (_, i) => addDays(t, i - 13));
+  const series = days14.map(d => S.reflections[d] ? rOverall(S.reflections[d]) : null);
+  const thisW = periodAvg(addDays(t, -6), t), lastW = periodAvg(addDays(t, -13), addDays(t, -7));
+  const delta = thisW !== null && lastW !== null ? Math.round(thisW - lastW) : null;
+  const rows = METRICS.map(([id, label]) => {
+    const a = periodAvg(addDays(t, -6), t, id), b = periodAvg(addDays(t, -13), addDays(t, -7), id);
+    if (a === null) return '';
+    const dl = b === null ? '' : a - b > .15 ? `<em class="up">▲ ${(a - b).toFixed(1)}</em>` : a - b < -.15 ? `<em class="down">▼ ${(b - a).toFixed(1)}</em>` : '<em>steady</em>';
+    return `<div class="mrow"><span>${label}</span><div class="bar"><i style="width:${a / 4 * 100}%"></i></div><b>${a.toFixed(1)}</b>${dl}</div>`;
+  }).join('');
+  const ins = computeInsights();
+  return `<div class="glass card"><div class="row"><div class="grow"><div class="meta">Wellbeing, last 7 days</div><div class="mval" style="font-size:44px;margin-top:4px">${thisW === null ? '–' : Math.round(thisW) + '%'}</div></div>
+      ${delta === null ? '' : `<div class="${delta >= 0 ? 'up' : 'down'}" style="font-size:15px">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} pts vs last week</div>`}</div>
+      ${spark(series)}<div class="meta" style="margin-top:6px">Last 14 days</div></div>
+    <div class="glass card"><div class="meta" style="margin-bottom:10px">Average per area (0 to 4, higher is better)</div>${rows}</div>
+    <h2>What helps you <span>patterns</span></h2>
+    ${ins === null ? `<div class="glass empty">Patterns unlock after 7 reflections (${dates.length} so far). Then the app compares your good and bad days with your habits.</div>`
+      : ins.length ? ins.map(i => `<div class="glass card insight ${i.good === true ? 'pos' : i.good === false ? 'neg' : ''}">${i.text}</div>`).join('') + '<p class="hint">These are patterns in your own data, not proof of cause. More days make them more reliable.</p>'
+      : '<div class="glass empty">No clear pattern yet. Keep logging habits and reflections, it takes a few weeks to see differences.</div>'}`;
+}
+function showSummary(d) {
+  const r = S.reflections[d], o = rOverall(r);
+  const avg = periodAvg(addDays(d, -14), addDays(d, -1));
+  const ra = avg === null ? null : Math.round(avg);
+  const cmp = ra === null ? 'This is your first score to compare against.' : o >= ra + 3 ? `Above your 14-day average of ${ra}%.` : o <= ra - 3 ? `Below your 14-day average of ${ra}%.` : `Right around your 14-day average of ${ra}%.`;
+  const vals = METRICS.map(([id, l]) => [l, rScore(r, id)]).filter(x => x[1] !== null);
+  const low = vals.slice().sort((a, b) => a[1] - b[1])[0], high = vals.slice().sort((a, b) => b[1] - a[1])[0];
+  const ins = computeInsights();
+  const tip = ins && ins.length ? ins[0].text : `Keep going: after ${Math.max(0, 7 - reflDates().length)} more reflection(s) the app shows which habits lift your mood.`;
+  openSheet(`<h3>Day score</h3><div class="mval" style="font-size:64px;margin:6px 0">${o}%</div><div class="meta" style="font-size:14px">${cmp}</div>
+    <div class="facts"><div><span>Strongest today</span><b>${high[0]}</b></div><div><span>Weakest today</span><b>${low[0]}</b></div></div>
+    <div class="desc" style="margin-top:12px">${tip}</div>
+    <div class="actions"><button class="btn primary" data-act="closesheet">Close</button></div>`);
+}
+
 /* ---------- stats ---------- */
 function viewStats(v) {
   const t = today(), si = streakInfo();
@@ -406,11 +516,11 @@ function viewStats(v) {
   const perHabit = S.habits.map(h => ({ h, s: habitStreak(h) })).sort((a, b) => b.s.cur - a.s.cur);
   v.innerHTML = `<h1>Stats</h1><p class="sub">Your progress at a glance.</p>
     <div class="hero"><div class="glass"><b>${weekPct}%</b><span>This week</span></div><div class="glass"><b>🔥 ${si.cur}</b><span>Streak</span></div><div class="glass"><b>${si.best}</b><span>Best streak</span></div></div>
+    <h2>Insights <span>daily reflection</span></h2>${insightsHtml()}
     <h2>Last 7 days</h2>${bars(week.map(x => ({ l: DOW[dowMon(x.d)], h: x.r.ratio * 100 })))}
     <h2>Monthly completion</h2>${bars(monthly.map(x => ({ l: x.label, h: x.r * 100 })))}
     <h2>Water per day</h2>${bars(last7.map(d => ({ l: DOW[dowMon(d)], h: (S.water.log[d] || 0) / maxW * 100 })), 'blue')}
     <h2>Consistency <span>last 30 days</span></h2><div class="cons">${cons}</div>
-    ${refl.length ? `<h2>Mood trend</h2>${bars(refl)}` : ''}
     <h2>Habit streaks</h2>
     ${perHabit.length ? perHabit.map(({ h, s }) => `<div class="glass card row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta"><span class="chip">${h.cat}</span>Best ${s.best}</div></div><b style="font-size:22px">🔥 ${s.cur}</b></div>`).join('') : '<div class="glass empty">Add habits to see streaks.</div>'}`;
 }
@@ -430,7 +540,7 @@ function viewMore(v) {
     <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
       <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
       <input id="importfile" type="file" accept="application/json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 6</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, version 7</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -648,7 +758,7 @@ document.addEventListener('click', e => {
       if (reflStep < REFLECTION.length - 1) { reflStep++; setTimeout(reflectSheet, 180); } else reflectSheet(); break;
     case 'rnext':
       if (reflStep < REFLECTION.length - 1) { reflStep++; reflectSheet(); }
-      else { S.reflections[selDay] = reflDraft; save(); closeSheet(); toast('Reflection saved'); render(); }
+      else { S.reflections[selDay] = reflDraft; save(); render(); showSummary(selDay); }
       break;
     case 'rprev': reflStep--; reflectSheet(); break;
     case 'setpin': pinSetup(); break;
