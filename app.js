@@ -1,0 +1,547 @@
+'use strict';
+/* SI: private self-improvement app. All data lives in localStorage on this device. */
+
+const CATS = ['Physique', 'Money', 'Social', 'Knowledge', 'Looks'];
+const MILESTONES = [7, 30, 100, 200, 365];
+const KEY = 'si-data-v1';
+const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DOW_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const REFLECTION = [
+  { id: 'mood', q: 'How is your mood today?', type: 'emoji' },
+  { id: 'energy', q: 'How was your energy?', type: 'emoji' },
+  { id: 'sleep', q: 'How did you sleep last night?', type: 'abc', opts: ['Great (7h or more)', 'Okay (5 to 7h)', 'Bad (under 5h)'] },
+  { id: 'stress', q: 'How stressed did you feel?', type: 'emoji' },
+  { id: 'focus', q: 'How was your focus?', type: 'abc', opts: ['Sharp', 'Average', 'Scattered'] },
+  { id: 'perf', q: 'How do you rate your performance today?', type: 'emoji' },
+  { id: 'social', q: 'How did you feel around people?', type: 'abc', opts: ['Connected', 'Neutral', 'Withdrawn'] },
+];
+const EMOJI = ['😞', '😕', '😐', '🙂', '😄'];
+
+/* ---------- state ---------- */
+const defaults = () => ({
+  habits: [], logs: {}, rests: {},
+  water: { goal: 2500, quick: [150, 250, 500], log: {} },
+  goals: [], reflections: {}, settings: { pin: null }, celebrated: {},
+});
+let S = load();
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) return Object.assign(defaults(), JSON.parse(raw));
+  } catch (e) { /* storage blocked: start empty */ }
+  return defaults();
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
+
+/* ---------- helpers ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2, 10);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const today = () => fmt(new Date());
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return fmt(d); };
+const dowMon = s => (parse(s).getDay() + 6) % 7; // Mon = 0
+const weekStart = s => addDays(s, -dowMon(s));
+const buzz = (n = 12) => { try { navigator.vibrate && navigator.vibrate(n); } catch (e) { /* unsupported on iOS */ } };
+
+let audioCtx;
+function tone(freq = 660, dur = .12, vol = .05) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch (e) { /* audio unavailable */ }
+}
+
+/* ---------- habit logic ---------- */
+const habitDue = (h, d) => d >= h.created && (!h.days || h.days.includes(dowMon(d)));
+const isRest = (h, d) => (S.rests[d] || []).includes(h.id);
+const value = (h, d) => (S.logs[d] && S.logs[d][h.id]) || 0;
+const isDone = (h, d) => h.type === 'num' ? value(h, d) >= h.target : value(h, d) >= 1;
+function restsUsedThisPeriod(h, d) {
+  const per = h.restPer === 'month';
+  let n = 0;
+  for (const day in S.rests) {
+    if (!S.rests[day].includes(h.id)) continue;
+    if (per ? day.slice(0, 7) === d.slice(0, 7) : weekStart(day) === weekStart(d)) n++;
+  }
+  return n;
+}
+function dayStats(d) {
+  const due = S.habits.filter(h => habitDue(h, d));
+  if (!due.length) return { due: 0, done: 0, rest: 0, ratio: 0, complete: false };
+  let done = 0, rest = 0;
+  due.forEach(h => { if (isDone(h, d)) done++; else if (isRest(h, d)) rest++; });
+  const progress = due.reduce((a, h) => {
+    if (isRest(h, d) && !isDone(h, d)) return a + 1;
+    return a + (h.type === 'num' ? Math.min(1, value(h, d) / h.target) : (value(h, d) ? 1 : 0));
+  }, 0);
+  return { due: due.length, done, rest, ratio: progress / due.length, complete: done + rest === due.length };
+}
+function streakInfo(upTo = today()) {
+  const dates = Object.keys(S.logs).concat(Object.keys(S.rests), S.habits.map(h => h.created)).sort();
+  if (!dates.length) return { cur: 0, best: 0 };
+  const start = dates[0];
+  let cur = 0, best = 0, run = 0;
+  for (let d = start; d <= upTo; d = addDays(d, 1)) {
+    const st = dayStats(d);
+    if (!st.due) continue;
+    if (st.complete) { run++; best = Math.max(best, run); }
+    else if (d === upTo) { /* today still open: do not break the run yet */ }
+    else run = 0;
+  }
+  cur = run;
+  return { cur, best };
+}
+function habitStreak(h) {
+  let run = 0, best = 0;
+  const t = today();
+  for (let d = h.created; d <= t; d = addDays(d, 1)) {
+    if (!habitDue(h, d)) continue;
+    if (isDone(h, d) || isRest(h, d)) { run++; best = Math.max(best, run); }
+    else if (d !== t) run = 0;
+  }
+  return { cur: run, best };
+}
+
+/* ---------- ui state ---------- */
+let tab = 'today', calMonth = new Date(), selDay = today(), goalCat = 'All', habitCat = 'All';
+
+const TABS = [['today', '◉', 'Today'], ['calendar', '▦', 'Calendar'], ['goals', '◎', 'Goals'], ['stats', '▤', 'Stats'], ['more', '⋯', 'More']];
+function renderTabs() {
+  $('#tabs').innerHTML = TABS.map(([id, ic, label]) =>
+    `<button data-tab="${id}" class="${tab === id ? 'on' : ''}"><span class="ic">${ic}</span>${label}</button>`).join('');
+}
+function go(t) { tab = t; render(); window.scrollTo({ top: 0 }); }
+function render() {
+  renderTabs();
+  const v = $('#view');
+  v.style.animation = 'none'; void v.offsetWidth; v.style.animation = '';
+  ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, stats: viewStats, more: viewMore })[tab](v);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-tab]');
+  if (t) { buzz(8); go(t.dataset.tab); }
+});
+
+/* ---------- today ---------- */
+function ring(pct, size = 96, color = 'var(--accent)') {
+  const r = 40, c = 2 * Math.PI * r;
+  return `<svg class="water-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="${r}" stroke="rgba(255,255,255,.1)"/><circle cx="50" cy="50" r="${r}" stroke="${color}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(1, pct))}" transform="rotate(-90 50 50)" style="transition:stroke-dashoffset .8s var(--ease)"/></svg>`;
+}
+function habitRow(h, d) {
+  const done = isDone(h, d), rest = isRest(h, d) && !done;
+  const left = h.restLimit ? Math.max(0, h.restLimit - restsUsedThisPeriod(h, d) + (rest ? 1 : 0)) : 0;
+  const hs = habitStreak(h);
+  const control = h.type === 'num'
+    ? `<div class="stepper"><button data-act="dec" data-id="${h.id}">−</button><span class="val">${value(h, d)} ${esc(h.unit)}</span><button data-act="inc" data-id="${h.id}">+</button></div>`
+    : `<button class="check ${done ? 'on' : rest ? 'rest' : ''}" data-act="toggle" data-id="${h.id}">${rest ? '☾' : '✓'}</button>`;
+  const restBtn = h.restLimit
+    ? `<button class="btn small" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest' : `Rest day (${left} left)`}</button>` : '';
+  const pct = h.type === 'num' ? `<div class="bar" style="margin-top:10px"><i style="width:${Math.min(100, value(h, d) / h.target * 100)}%"></i></div>` : '';
+  return `<div class="glass card"><div class="row"><div class="grow" data-act="edit" data-id="${h.id}"><div class="name">${esc(h.name)}</div>
+    <div class="meta"><span class="chip">${h.cat}</span>${hs.cur ? '🔥 ' + hs.cur : 'No streak yet'}${h.type === 'num' ? ` · goal ${h.target} ${esc(h.unit)}` : ''}</div></div>${control}</div>${pct}
+    ${restBtn ? `<div style="margin-top:10px">${restBtn}</div>` : ''}</div>`;
+}
+function viewToday(v) {
+  const d = selDay, isToday = d === today();
+  const due = S.habits.filter(h => habitDue(h, d));
+  const st = dayStats(d), si = streakInfo();
+  const w = S.water.log[d] || 0, wp = w / S.water.goal;
+  const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening';
+  const cats = ['All', ...CATS];
+  const shown = due.filter(h => habitCat === 'All' || h.cat === habitCat);
+  v.innerHTML = `
+    <h1>${isToday ? greeting : parse(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
+    <p class="sub">${isToday ? parse(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '<a data-act="gotoday" style="color:var(--accent)">Back to today</a>'}</p>
+    <div class="hero">
+      <div class="glass"><b>🔥 ${si.cur}</b><span>Day streak</span></div>
+      <div class="glass"><b>${st.due ? Math.round(st.ratio * 100) : 0}%</b><span>Done</span></div>
+      <div class="glass"><b>${si.best}</b><span>Best streak</span></div>
+    </div>
+    <h2>Water</h2>
+    <div class="glass card"><div class="row">${ring(wp, 96, wp >= 1 ? 'var(--ok)' : 'var(--accent)')}
+      <div class="grow"><div class="name" style="font-size:24px">${w} / ${S.water.goal} ml</div>
+      <div class="meta">${wp >= 1 ? 'Goal reached 💧' : Math.max(0, S.water.goal - w) + ' ml to go'}</div></div></div>
+      <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="water" data-ml="-1">Undo</button></div></div>
+    <h2>Habits</h2>
+    <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
+    ${shown.length ? shown.map(h => habitRow(h, d)).join('') : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
+    <h2>Day reflection</h2>
+    <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Reflection saved ✓' : 'Reflect on your day'}</div><div class="meta">7 quick taps, no typing</div></div>
+      <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
+    <button class="fab" data-act="newhabit">+</button>`;
+}
+
+/* ---------- calendar ---------- */
+function viewCalendar(v) {
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  const first = new Date(y, m, 1), days = new Date(y, m + 1, 0).getDate();
+  const lead = (first.getDay() + 6) % 7;
+  let cells = DOW.map(x => `<div class="dow">${x}</div>`).join('') + '<div></div>'.repeat(lead);
+  for (let i = 1; i <= days; i++) {
+    const d = `${y}-${pad(m + 1)}-${pad(i)}`, st = dayStats(d);
+    let style = '', cls = 'day';
+    if (st.due) {
+      if (st.complete && st.done > 0) cls += ' complete';
+      else if (st.complete) cls += ' restonly';
+      else if (st.ratio > 0) style = `background:rgba(245,215,110,${(.15 + st.ratio * .75).toFixed(2)});color:${st.ratio > .55 ? '#1a1606' : 'inherit'}`;
+    }
+    if (d === today()) cls += ' today';
+    if (d === selDay) cls += ' sel';
+    cells += `<button class="${cls}" style="${style}" data-act="pick" data-d="${d}">${i}</button>`;
+  }
+  const sel = selDay, due = S.habits.filter(h => habitDue(h, sel));
+  v.innerHTML = `
+    <div class="cal-head"><button data-act="prevm">‹</button><h1 style="margin:0;font-size:22px">${first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</h1><button data-act="nextm">›</button></div>
+    <div class="glass cal">${cells}</div>
+    <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly done (brighter = more)</span><span><i style="background:var(--rest)"></i>Rest only</span></div>
+    <h2>${parse(sel).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
+    ${due.length ? due.map(h => habitRow(h, sel)).join('') : '<div class="glass empty">No habits due on this day.</div>'}
+    <p class="hint">Tap a habit to tick it for any past day.</p>`;
+}
+
+/* ---------- goals ---------- */
+function goalPct(g) { return g.done ? 1 : g.mode === 'num' ? Math.min(1, g.progress / g.target) : 0; }
+function viewGoals(v) {
+  const cats = ['All', ...CATS];
+  const list = S.goals.filter(g => goalCat === 'All' || g.cat === goalCat)
+    .sort((a, b) => (a.done - b.done) || (a.deadline || '9').localeCompare(b.deadline || '9'));
+  v.innerHTML = `<h1>Goals</h1><p class="sub">Bigger targets with a deadline.</p>
+    <div class="cats">${cats.map(c => `<button class="${goalCat === c ? 'on' : ''}" data-act="gcat" data-c="${c}">${c}</button>`).join('')}</div>
+    ${list.length ? list.map(g => {
+      const left = g.deadline ? Math.ceil((parse(g.deadline) - parse(today())) / 864e5) : null;
+      return `<div class="glass card"><div class="row"><div class="grow" data-act="editgoal" data-id="${g.id}">
+        <div class="name">${g.done ? '✓ ' : ''}${esc(g.title)}</div>
+        <div class="meta"><span class="chip">${g.cat}</span>${g.deadline ? (g.done ? 'Done' : left < 0 ? 'Overdue by ' + (-left) + ' days' : left + ' days left') : 'No deadline'}${g.mode === 'num' ? ` · ${g.progress}/${g.target} ${esc(g.unit || '')}` : ''}</div></div>
+        ${g.done ? '' : g.mode === 'num' ? `<div class="stepper"><button data-act="gdec" data-id="${g.id}">−</button><button data-act="ginc" data-id="${g.id}">+</button></div>` : `<button class="btn small primary" data-act="gdone" data-id="${g.id}">Done</button>`}</div>
+        ${g.mode === 'num' ? `<div class="bar ${g.done ? 'green' : ''}" style="margin-top:10px"><i style="width:${goalPct(g) * 100}%"></i></div>` : ''}</div>`;
+    }).join('') : '<div class="glass empty">No goals here yet. Tap + to add one.</div>'}
+    <button class="fab" data-act="newgoal">+</button>`;
+}
+
+/* ---------- stats ---------- */
+function viewStats(v) {
+  const t = today(), si = streakInfo();
+  const last7 = Array.from({ length: 7 }, (_, i) => addDays(t, i - 6));
+  const week = last7.map(d => ({ d, r: dayStats(d) }));
+  const withDue = week.filter(x => x.r.due);
+  const weekPct = withDue.length ? Math.round(withDue.reduce((a, x) => a + x.r.ratio, 0) / withDue.length * 100) : 0;
+  const months = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 5 + i); return d; });
+  const monthly = months.map(md => {
+    const n = new Date(md.getFullYear(), md.getMonth() + 1, 0).getDate();
+    let sum = 0, c = 0;
+    for (let i = 1; i <= n; i++) {
+      const d = `${md.getFullYear()}-${pad(md.getMonth() + 1)}-${pad(i)}`;
+      if (d > t) break;
+      const s = dayStats(d); if (s.due) { sum += s.ratio; c++; }
+    }
+    return { label: md.toLocaleDateString('en-GB', { month: 'short' }), r: c ? sum / c : 0 };
+  });
+  const maxW = Math.max(S.water.goal, ...last7.map(d => S.water.log[d] || 0));
+  const start = addDays(weekStart(t), -52 * 7);
+  let heat = '';
+  for (let d = start; d <= addDays(weekStart(t), 6); d = addDays(d, 1)) {
+    if (d > t) { heat += '<i style="opacity:.25"></i>'; continue; }
+    const s = dayStats(d);
+    const bg = !s.due ? '' : s.complete && s.done ? 'background:var(--ok)' : s.ratio > 0 ? `background:rgba(245,215,110,${(.2 + s.ratio * .8).toFixed(2)})` : s.complete ? 'background:var(--rest)' : '';
+    heat += `<i style="${bg}" title="${d}"></i>`;
+  }
+  const bars = (arr, cls = '') => `<div class="glass"><div class="bars ${cls}">${arr.map(x => `<div><i style="height:${Math.max(3, x.h)}%"></i></div>`).join('')}</div>
+    <div class="labels">${arr.map(x => `<span>${x.l}</span>`).join('')}</div></div>`;
+  const refl = Object.keys(S.reflections).sort().slice(-7).map(d => {
+    const r = S.reflections[d]; const m = r.mood;
+    return { l: parse(d).toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 2), h: m == null ? 0 : (m + 1) * 20 };
+  });
+  const perHabit = S.habits.map(h => ({ h, s: habitStreak(h) })).sort((a, b) => b.s.cur - a.s.cur);
+  v.innerHTML = `<h1>Stats</h1><p class="sub">Your progress at a glance.</p>
+    <div class="hero"><div class="glass"><b>${weekPct}%</b><span>This week</span></div><div class="glass"><b>🔥 ${si.cur}</b><span>Streak</span></div><div class="glass"><b>${si.best}</b><span>Best streak</span></div></div>
+    <h2>Last 7 days</h2>${bars(week.map(x => ({ l: DOW[dowMon(x.d)], h: x.r.ratio * 100 })))}
+    <h2>Monthly completion</h2>${bars(monthly.map(x => ({ l: x.label, h: x.r * 100 })))}
+    <h2>Water per day</h2>${bars(last7.map(d => ({ l: DOW[dowMon(d)], h: (S.water.log[d] || 0) / maxW * 100 })), 'blue')}
+    <h2>Year heat map</h2><div class="glass heat">${heat}</div>
+    <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly</span><span><i style="background:var(--rest)"></i>Rest</span></div>
+    ${refl.length ? `<h2>Mood trend</h2>${bars(refl)}` : ''}
+    <h2>Habit streaks</h2>
+    ${perHabit.length ? perHabit.map(({ h, s }) => `<div class="glass card row"><div class="grow"><div class="name">${esc(h.name)}</div><div class="meta"><span class="chip">${h.cat}</span>Best ${s.best}</div></div><b style="font-size:22px">🔥 ${s.cur}</b></div>`).join('') : '<div class="glass empty">Add habits to see streaks.</div>'}`;
+}
+
+/* ---------- more / settings ---------- */
+function viewMore(v) {
+  v.innerHTML = `<h1>More</h1><p class="sub">Settings, security and backup.</p>
+    <h2>Water</h2>
+    <div class="glass card"><label style="margin-top:0">Daily goal (ml)</label><input id="wgoal" type="number" inputmode="numeric" value="${S.water.goal}">
+      <label>Quick-add amounts (ml, comma separated)</label><input id="wquick" value="${S.water.quick.join(', ')}">
+      <div class="actions"><button class="btn primary" data-act="savewater">Save</button></div></div>
+    <h2>Security</h2>
+    <div class="glass card row"><div class="grow"><div class="name">App lock</div><div class="meta">${S.settings.pin ? '4-digit code is on' : 'Off'}</div></div>
+      <button class="btn small" data-act="setpin">${S.settings.pin ? 'Change' : 'Set code'}</button>${S.settings.pin ? '<button class="btn small danger" data-act="rmpin">Remove</button>' : ''}</div>
+    <h2>Backup</h2>
+    <div class="glass card"><div class="meta" style="margin-bottom:12px">Your data lives only on this phone. Save a backup file regularly (Files app or iCloud Drive).</div>
+      <div class="actions"><button class="btn primary" data-act="export">Export</button><button class="btn" data-act="import">Import</button></div>
+      <input id="importfile" type="file" accept="application/json" style="display:none"></div>
+    <h2>Danger zone</h2>
+    <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
+}
+
+/* ---------- modal helpers ---------- */
+function openSheet(html) {
+  $('#modal-root').innerHTML = `<div class="scrim" data-act="closesheet"><div class="glass sheet">${html}</div></div>`;
+}
+function closeSheet() { $('#modal-root').innerHTML = ''; }
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast glass'; el.textContent = msg;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 2800);
+}
+const segHtml = (name, opts, sel, multi) => `<div class="seg" data-seg="${name}" ${multi ? 'data-multi="1"' : ''}>${opts.map(([v, l]) => `<button type="button" data-v="${v}" class="${(multi ? sel.includes(v) : sel === v) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+document.addEventListener('click', e => {
+  const b = e.target.closest('.seg[data-seg] button');
+  if (!b) return;
+  const seg = b.parentElement;
+  if (seg.dataset.multi) b.classList.toggle('on');
+  else { seg.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); }
+  if (seg.dataset.seg === 'type') $('#numfields').style.display = b.dataset.v === 'num' ? 'block' : 'none';
+  if (seg.dataset.seg === 'gmode') $('#gnumfields').style.display = b.dataset.v === 'num' ? 'block' : 'none';
+});
+const segVal = n => { const b = $(`[data-seg="${n}"] button.on`); return b ? b.dataset.v : null; };
+const segVals = n => [...document.querySelectorAll(`[data-seg="${n}"] button.on`)].map(b => b.dataset.v);
+
+function habitSheet(h) {
+  const nh = h || { name: '', cat: 'Physique', type: 'bool', unit: 'min', target: 30, days: null, restLimit: 0, restPer: 'week' };
+  const dayList = nh.days || [0, 1, 2, 3, 4, 5, 6];
+  openSheet(`<h3>${h ? 'Edit habit' : 'New habit'}</h3>
+    <label>Name</label><input id="hname" value="${esc(nh.name)}" placeholder="e.g. Workout">
+    <label>Category</label>${segHtml('cat', CATS.map(c => [c, c]), nh.cat)}
+    <label>Type</label>${segHtml('type', [['bool', 'Yes / No'], ['num', 'Number']], nh.type)}
+    <div id="numfields" style="display:${nh.type === 'num' ? 'block' : 'none'}">
+      <label>Daily target</label><input id="htarget" type="number" inputmode="decimal" value="${nh.target}">
+      <label>Unit</label>${segHtml('unit', ['ml', 'l', 'reps', 'min', 'h', 'km', 'g', 'kg', 'pages'].map(u => [u, u]), nh.unit)}
+    </div>
+    <label>Days</label>${segHtml('days', DOW_NAMES.map((n, i) => [i, n]), dayList.map(String), true)}
+    <label>Rest days allowed (0 = none)</label><input id="hrest" type="number" inputmode="numeric" min="0" value="${nh.restLimit}">
+    <label>Per</label>${segHtml('restper', [['week', 'Week'], ['month', 'Month']], nh.restPer)}
+    <div class="actions">${h ? '<button class="btn danger" data-act="delhabit" data-id="' + h.id + '">Delete</button>' : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savehabit" data-id="${h ? h.id : ''}">Save</button></div>`);
+}
+function goalSheet(g) {
+  const ng = g || { title: '', cat: 'Physique', deadline: '', mode: 'bool', target: 10, progress: 0, unit: '' };
+  openSheet(`<h3>${g ? 'Edit goal' : 'New goal'}</h3>
+    <label>Goal</label><input id="gtitle" value="${esc(ng.title)}" placeholder="e.g. Post 30 videos">
+    <label>Category</label>${segHtml('gcat', CATS.map(c => [c, c]), ng.cat)}
+    <label>Deadline</label><input id="gdead" type="date" value="${ng.deadline || ''}">
+    <label>Progress</label>${segHtml('gmode', [['bool', 'Done / not done'], ['num', 'Counted']], ng.mode)}
+    <div id="gnumfields" style="display:${ng.mode === 'num' ? 'block' : 'none'}">
+      <label>Target number</label><input id="gtarget" type="number" inputmode="decimal" value="${ng.target}">
+      <label>Unit (optional)</label><input id="gunit" value="${esc(ng.unit || '')}" placeholder="videos, EUR, kg">
+    </div>
+    <div class="actions">${g ? '<button class="btn danger" data-act="delgoal" data-id="' + g.id + '">Delete</button>' : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savegoal" data-id="${g ? g.id : ''}">Save</button></div>`);
+}
+let reflDraft = {}, reflStep = 0;
+function reflectSheet() {
+  const q = REFLECTION[reflStep];
+  const cur = reflDraft[q.id];
+  const body = q.type === 'emoji'
+    ? `<div class="emoji-row">${EMOJI.map((e, i) => `<button class="${cur === i ? 'on' : ''}" data-act="ans" data-v="${i}">${e}</button>`).join('')}</div>`
+    : `<div class="abc">${q.opts.map((o, i) => `<button class="${cur === i ? 'on' : ''}" data-act="ans" data-v="${i}"><b>${'ABC'[i]}</b>  ${o}</button>`).join('')}</div>`;
+  openSheet(`<div class="meta">Question ${reflStep + 1} of ${REFLECTION.length}</div><div class="bar" style="margin:8px 0 18px"><i style="width:${(reflStep + 1) / REFLECTION.length * 100}%"></i></div>
+    <h3>${q.q}</h3>${body}
+    <div class="actions"><button class="btn" data-act="${reflStep ? 'rprev' : 'closesheet'}">${reflStep ? 'Back' : 'Cancel'}</button><button class="btn primary" data-act="rnext">${reflStep === REFLECTION.length - 1 ? 'Finish' : 'Skip'}</button></div>`);
+}
+
+/* ---------- celebrations ---------- */
+function celebrate(msg) {
+  toast(msg); tone(660, .12); setTimeout(() => tone(880, .18), 120); setTimeout(() => tone(1175, .25), 260);
+  buzz([20, 40, 20]);
+  const c = $('#fx'), ctx = c.getContext('2d');
+  c.width = innerWidth * devicePixelRatio; c.height = innerHeight * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  const cols = ['#f5d76e', '#4ade80', '#ffeaa0', '#ffffff'];
+  const ps = Array.from({ length: 90 }, () => ({
+    x: innerWidth / 2, y: innerHeight * .55, vx: (Math.random() - .5) * 9, vy: -Math.random() * 11 - 3,
+    s: Math.random() * 4 + 2, c: cols[(Math.random() * cols.length) | 0], life: 1,
+  }));
+  (function frame() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    let alive = false;
+    ps.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.vy += .28; p.life -= .011;
+      if (p.life > 0) { alive = true; ctx.globalAlpha = p.life; ctx.fillStyle = p.c; ctx.shadowColor = p.c; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 7); ctx.fill(); }
+    });
+    if (alive) requestAnimationFrame(frame); else ctx.clearRect(0, 0, innerWidth, innerHeight);
+  })();
+}
+function checkMilestone() {
+  const si = streakInfo();
+  if (MILESTONES.includes(si.cur) && dayStats(today()).complete && S.celebrated['s' + si.cur] !== today()) {
+    S.celebrated['s' + si.cur] = today(); save();
+    celebrate(`🔥 ${si.cur}-day streak!`);
+  } else if (dayStats(selDay).complete && dayStats(selDay).done > 0 && S.celebrated['d' + selDay] === undefined) {
+    S.celebrated['d' + selDay] = 1; save();
+    tone(784, .15); buzz(25);
+  }
+}
+
+/* ---------- actions ---------- */
+function setLog(h, d, val) {
+  (S.logs[d] = S.logs[d] || {})[h.id] = Math.max(0, val);
+  if (S.rests[d]) S.rests[d] = S.rests[d].filter(x => x !== h.id);
+}
+function numStep(h) { return h.unit === 'ml' ? 100 : h.unit === 'min' ? 5 : h.unit === 'g' ? 10 : 1; }
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const a = el.dataset.act, id = el.dataset.id;
+  const h = S.habits.find(x => x.id === id), g = S.goals.find(x => x.id === id);
+  const d = tab === 'calendar' ? selDay : selDay;
+  switch (a) {
+    case 'toggle': setLog(h, d, isDone(h, d) ? 0 : 1); buzz(); tone(isDone(h, d) ? 740 : 520, .09); save(); render(); checkMilestone(); break;
+    case 'inc': setLog(h, d, value(h, d) + numStep(h)); buzz(6); save(); render(); checkMilestone(); break;
+    case 'dec': setLog(h, d, value(h, d) - numStep(h)); buzz(6); save(); render(); break;
+    case 'rest': {
+      const r = S.rests[d] = S.rests[d] || [];
+      if (r.includes(h.id)) S.rests[d] = r.filter(x => x !== h.id);
+      else if (restsUsedThisPeriod(h, d) < h.restLimit) { r.push(h.id); if (S.logs[d]) delete S.logs[d][h.id]; }
+      else toast('No rest days left for this period');
+      buzz(); save(); render(); checkMilestone(); break;
+    }
+    case 'edit': habitSheet(h); break;
+    case 'newhabit': habitSheet(); break;
+    case 'savehabit': {
+      const name = $('#hname').value.trim();
+      if (!name) { toast('Please enter a name'); break; }
+      const type = segVal('type');
+      const obj = {
+        id: h ? h.id : uid(), name, cat: segVal('cat') || 'Physique', type,
+        unit: segVal('unit') || 'min', target: Math.max(1, parseFloat($('#htarget').value) || 1),
+        days: segVals('days').length === 7 ? null : segVals('days').map(Number),
+        restLimit: Math.max(0, parseInt($('#hrest').value) || 0), restPer: segVal('restper') || 'week',
+        created: h ? h.created : today(),
+      };
+      if (obj.days && !obj.days.length) obj.days = null;
+      if (h) Object.assign(h, obj); else S.habits.push(obj);
+      save(); closeSheet(); render(); break;
+    }
+    case 'delhabit': if (confirm('Delete this habit and its history?')) { S.habits = S.habits.filter(x => x.id !== id); save(); closeSheet(); render(); } break;
+    case 'closesheet': if (el.classList.contains('scrim') && e.target !== el) break; closeSheet(); break;
+    case 'hcat': habitCat = el.dataset.c; render(); break;
+    case 'gcat': goalCat = el.dataset.c; render(); break;
+    case 'gotoday': selDay = today(); render(); break;
+    case 'pick': selDay = el.dataset.d; render(); break;
+    case 'prevm': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); render(); break;
+    case 'nextm': calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); render(); break;
+    case 'water': {
+      const ml = parseInt(el.dataset.ml), cur = S.water.log[today()] || 0;
+      S.water.log[today()] = ml < 0 ? 0 : cur + ml;
+      if (ml > 0 && cur < S.water.goal && cur + ml >= S.water.goal) celebrate('💧 Water goal reached!');
+      buzz(); tone(480, .1); save(); render(); break;
+    }
+    case 'savewater': {
+      const goal = parseInt($('#wgoal').value) || 2500;
+      const quick = $('#wquick').value.split(',').map(x => parseInt(x)).filter(x => x > 0);
+      S.water.goal = goal; S.water.quick = quick.length ? quick : [250]; save(); toast('Saved'); render(); break;
+    }
+    case 'newgoal': goalSheet(); break;
+    case 'editgoal': goalSheet(g); break;
+    case 'savegoal': {
+      const title = $('#gtitle').value.trim();
+      if (!title) { toast('Please enter a goal'); break; }
+      const mode = segVal('gmode');
+      const obj = { id: g ? g.id : uid(), title, cat: segVal('gcat') || 'Physique', deadline: $('#gdead').value || '', mode,
+        target: Math.max(1, parseFloat($('#gtarget').value) || 1), unit: $('#gunit').value.trim(), progress: g ? g.progress : 0, done: g ? g.done : false };
+      if (g) Object.assign(g, obj); else S.goals.push(obj);
+      save(); closeSheet(); render(); break;
+    }
+    case 'delgoal': if (confirm('Delete this goal?')) { S.goals = S.goals.filter(x => x.id !== id); save(); closeSheet(); render(); } break;
+    case 'gdone': g.done = true; save(); render(); celebrate('🎯 Goal completed!'); break;
+    case 'ginc': {
+      const step = Math.max(1, Math.round(g.target / 20)); g.progress += step;
+      if (g.progress >= g.target) { g.progress = g.target; g.done = true; celebrate('🎯 Goal completed!'); }
+      buzz(8); save(); render(); break;
+    }
+    case 'gdec': g.progress = Math.max(0, g.progress - Math.max(1, Math.round(g.target / 20))); save(); render(); break;
+    case 'reflect': reflDraft = Object.assign({}, S.reflections[selDay] || {}); reflStep = 0; reflectSheet(); break;
+    case 'ans': reflDraft[REFLECTION[reflStep].id] = parseInt(el.dataset.v); buzz(6); tone(600, .06);
+      if (reflStep < REFLECTION.length - 1) { reflStep++; setTimeout(reflectSheet, 180); } else reflectSheet(); break;
+    case 'rnext':
+      if (reflStep < REFLECTION.length - 1) { reflStep++; reflectSheet(); }
+      else { S.reflections[selDay] = reflDraft; save(); closeSheet(); toast('Reflection saved'); render(); }
+      break;
+    case 'rprev': reflStep--; reflectSheet(); break;
+    case 'setpin': pinSetup(); break;
+    case 'rmpin': if (confirm('Remove the app lock?')) { S.settings.pin = null; save(); render(); } break;
+    case 'export': {
+      const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob), a2 = document.createElement('a');
+      a2.href = url; a2.download = `si-backup-${today()}.json`; document.body.appendChild(a2); a2.click(); a2.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000); break;
+    }
+    case 'import': $('#importfile').click(); break;
+    case 'wipe': if (confirm('Delete ALL data? This cannot be undone.')) { localStorage.removeItem(KEY); S = defaults(); render(); toast('All data deleted'); } break;
+  }
+});
+document.addEventListener('change', e => {
+  if (e.target.id !== 'importfile' || !e.target.files[0]) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try { S = Object.assign(defaults(), JSON.parse(rd.result)); save(); toast('Backup restored'); render(); }
+    catch (err) { toast('That file is not a valid backup'); }
+  };
+  rd.readAsText(e.target.files[0]);
+});
+
+/* ---------- lock ---------- */
+async function hash(s) {
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('si:' + s));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return 'p:' + btoa(s); }
+}
+function pinPad(title, onDone) {
+  let code = '';
+  const root = $('#lock-root');
+  const draw = () => {
+    root.innerHTML = `<div class="lock"><div style="font-size:42px">🔒</div><div class="name">${title}</div>
+      <div class="dots" id="dots">${[0, 1, 2, 3].map(i => `<i class="${i < code.length ? 'f' : ''}"></i>`).join('')}</div>
+      <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map(k => k === '' ? '<span></span>' : `<button data-k="${k}">${k}</button>`).join('')}</div>
+      ${S.settings.pin && title.startsWith('Enter') ? '' : '<button class="btn" id="pincancel">Cancel</button>'}</div>`;
+    root.querySelectorAll('[data-k]').forEach(b => b.onclick = async () => {
+      buzz(6);
+      const k = b.dataset.k;
+      if (k === '⌫') code = code.slice(0, -1); else if (code.length < 4) code += k;
+      draw();
+      if (code.length === 4) {
+        const ok = await onDone(code);
+        if (ok === false) { code = ''; const l = $('.lock'); l.classList.add('shake'); setTimeout(draw, 400); }
+      }
+    });
+    const c = $('#pincancel'); if (c) c.onclick = () => { root.innerHTML = ''; };
+  };
+  draw();
+}
+function pinSetup() {
+  pinPad('Choose a 4-digit code', first => {
+    pinPad('Repeat the code', async second => {
+      if (second !== first) { toast('Codes did not match'); return false; }
+      S.settings.pin = await hash(first); save(); $('#lock-root').innerHTML = ''; toast('Lock enabled'); render();
+    });
+  });
+}
+function lockIfNeeded() {
+  if (!S.settings.pin) { $('#lock-root').innerHTML = ''; return; }
+  pinPad('Enter your code', async c => {
+    if ((await hash(c)) === S.settings.pin) { $('#lock-root').innerHTML = ''; return true; }
+    buzz([30, 30, 30]); return false;
+  });
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) { window.__hid = Date.now(); } else if (S.settings.pin && Date.now() - (window.__hid || 0) > 30000) lockIfNeeded(); });
+
+/* ---------- boot ---------- */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline cache optional */ });
+render();
+lockIfNeeded();
