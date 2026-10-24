@@ -1,13 +1,14 @@
 'use strict';
 /* SI: private self-improvement app. All data lives in localStorage on this device. */
 
-const CATS = ['Physique', 'Money', 'Social', 'Knowledge', 'Looks', 'General'];
-const CATCOL = { Physique: '#ff7a59', Money: '#6ee7a8', Social: '#6fb5ff', Knowledge: '#b794f6', Looks: '#ff8fc7', General: '#d8d8d2' };
+const CATS = ['Physique', 'Money', 'Social', 'Knowledge', 'Looks', 'Routines', 'General'];
+const CATCOL = { Physique: '#ff7a59', Money: '#6ee7a8', Social: '#6fb5ff', Knowledge: '#b794f6', Looks: '#ff8fc7', Routines: '#5eead4', General: '#d8d8d2' };
 const CATICON = {
   Physique: '<svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>',
   Money: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.4c-.6-.9-1.6-1.3-2.8-1.3-1.5 0-2.6.7-2.6 1.9 0 2.7 5.6 1.3 5.6 3.9 0 1.2-1.1 2-2.9 2-1.3 0-2.4-.5-3-1.5M12 6.5v1.6M12 15.9v1.6"/></svg>',
   Social: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.6a3 3 0 0 1 0 5.8M18 14.2c1.8.7 3 2.3 3 4.8"/></svg>',
   Knowledge: '<svg viewBox="0 0 24 24"><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z"/><path d="M12 6v13.5"/></svg>',
+  Routines: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5"/></svg>',
   General: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/></svg>',
   Looks: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>',
 };
@@ -736,7 +737,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.3</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.4</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -791,6 +792,13 @@ const HABIT_TEMPLATES = [
   { name: 'Learn English', cat: 'Knowledge', type: 'num', target: 15, unit: 'min' },
   { name: 'Call a friend', cat: 'Social', type: 'bool' },
   { name: 'Skincare', cat: 'Looks', type: 'bool' },
+  { name: 'Evening routine', cat: 'Routines', type: 'bool', desc: '1. Wash hands\n2. Wash face with clean hands\n3. Apply cleanser\n4. Brush teeth\n5. Apply moisturizer\n6. Castor oil on eyebrows and lashes\n7. Jaw exercise\n8. Eye exercise\n9. Whitening strip\nWhen needed: dye eyebrows' },
+  { name: 'Training plan', cat: 'Routines', type: 'bool', desc: 'Day 1: chest, triceps, abs\nChest press, incline press, butterfly, dips machine, ab crunch (3 sets each)\nDay 2: back, biceps\nLat pulldown, seated row, lat pulldown, biceps curls (3 sets each) + running intervals\nDay 3: shoulders, rotators, torso, abs\nShoulder press, lateral raise, reverse butterfly, torso rotation, ab crunch (3 sets each)\nExtras: calf raises, back extensions' },
+  { name: 'Running intervals', cat: 'Physique', type: 'bool', desc: '15 s sprint, 45 s walk, 8 to 10 rounds on the treadmill' },
+  { name: 'Calf raises and back extensions', cat: 'Physique', type: 'bool', desc: 'Calf raises: 3 x 15-20\nBack extensions: 3 x 12-15' },
+  { name: 'Jaw and eye exercise', cat: 'Looks', type: 'bool' },
+  { name: 'Whitening strip', cat: 'Looks', type: 'bool' },
+  { name: 'Dye eyebrows', cat: 'Looks', type: 'bool', period: 'week', target: 1 },
   { name: 'Make the bed', cat: 'General', type: 'bool' },
   { name: 'Plan the day', cat: 'General', type: 'bool' },
   { name: 'No phone before bed', cat: 'General', type: 'bool' },
