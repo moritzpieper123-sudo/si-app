@@ -249,7 +249,7 @@ function render() {
   const v = $('#view');
   const enter = tab !== lastTab; lastTab = tab;
   try {
-    ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, income: viewIncome, stats: viewStats, more: viewMore })[tab](v);
+    ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, income: viewIncome, stats: viewStats, more: viewMore, gallery: viewGallery })[tab](v);
   } catch (err) {
     v.innerHTML = `<h1>Something went wrong</h1><div class="glass card"><div class="meta">${esc(err.message)}</div><div class="actions"><button class="btn primary" data-act="export">Save backup</button><button class="btn" data-tab="today">Home</button></div></div>`;
   }
@@ -259,7 +259,7 @@ function render() {
     v.querySelectorAll('.tile,.goalcard,.card.flat').forEach((c, i) => c.style.setProperty('--j', Math.min(i, 8)));
   }
   const hs = $('.heatscroll'); if (hs) hs.scrollLeft = hs.scrollWidth;
-  v.insertAdjacentHTML('afterbegin', tab === 'more'
+  v.insertAdjacentHTML('afterbegin', tab === 'more' || tab === 'gallery'
     ? `<button class="hbtn" data-tab="today" aria-label="Back"><svg viewBox="0 0 24 24" class="o"><path d="M15 5l-7 7 7 7"/></svg></button>`
     : `<button class="hbtn" data-tab="more" aria-label="Settings">${IC.gear}</button>`);
   runAnims(enter); runCounts(enter);
@@ -377,6 +377,9 @@ function viewToday(v) {
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
+    <h2>Gallery</h2>
+    <div class="glass card flat row" data-tab="gallery"><div class="grow"><div class="name">Plans and routines</div><div class="meta">${PHOTOS.length} pictures</div></div>
+      <div class="pthumbs">${PHOTOS.slice(0, 3).map(p => `<img src="${p.src}" alt="" loading="lazy">`).join('')}</div></div>
 `;
 }
 
@@ -716,6 +719,8 @@ function viewMore(v) {
   const archived = S.habits.filter(h => h.archived);
   const lastExp = S.settings.lastExport ? parse(S.settings.lastExport).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never';
   v.innerHTML = `<h1>Settings</h1><p class="sub">Make the app fit your routine.</p>
+    <h2>Gallery</h2>
+    <div class="glass card flat row" data-tab="gallery"><div class="grow"><div class="name">Plans and routines</div><div class="meta">Open your pictures</div></div><span class="meta">›</span></div>
     <h2>Hydration</h2>
     <div class="glass card"><label style="margin-top:0">Daily goal (ml)</label><input id="wgoal" type="number" inputmode="numeric" value="${S.water.goal}">
       <label>Quick-add amounts (ml, comma separated)</label><input id="wquick" value="${S.water.quick.join(', ')}">
@@ -737,9 +742,31 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.4</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.5</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
+}
+
+/* ---------- gallery ---------- */
+const PHOTOS = [
+  { id: 'plan', src: 'photos/training-plan.jpg', title: '3-day training plan', note: 'Chest, back and shoulders on rotation, with sprint intervals for tennis.', cat: 'Physique' },
+  { id: 'muscle', src: 'photos/muscle-map.jpg', title: 'Muscle intensity map', note: 'Which muscles the rotation hits hardest.', cat: 'Physique' },
+  { id: 'evening', src: 'photos/evening-routine.jpg', title: 'Evening routine', note: 'Eight steps before bed, plus whitening strip and brows when needed.', cat: 'Looks' },
+];
+let photoCat = 'All';
+function viewGallery(v) {
+  const cats = ['All', ...new Set(PHOTOS.map(p => p.cat))];
+  const shown = PHOTOS.filter(p => photoCat === 'All' || p.cat === photoCat);
+  v.innerHTML = `<h1>Gallery</h1><p class="sub">Your plans and routines, always at hand.</p>
+    <div class="cats">${cats.map(c => `<button class="${photoCat === c ? 'on' : ''}" data-act="pcat" data-c="${c}">${c}</button>`).join('')}</div>
+    ${shown.map(p => `<div class="card flat photo" data-act="photo" data-id="${p.id}"><div class="pimg"><img src="${p.src}" alt="${esc(p.title)}" loading="lazy"><span class="chip">${p.cat}</span></div>
+      <div class="pcap"><div class="name">${esc(p.title)}</div><div class="meta">${esc(p.note)}</div></div></div>`).join('')}
+    <p class="hint">Tap a picture to open it large. Tap again to zoom in.</p>`;
+}
+function photoViewer(p) {
+  $('#modal-root').innerHTML = `<div class="lightbox"><div class="lbbar"><div class="grow"><div class="name">${esc(p.title)}</div></div>
+    <button class="hbtn2" data-act="closesheet" aria-label="Close"><svg viewBox="0 0 24 24" class="o"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="lbscroll"><img src="${p.src}" alt="${esc(p.title)}" data-act="photozoom"></div></div>`;
 }
 
 /* ---------- modal helpers ---------- */
@@ -973,6 +1000,9 @@ document.addEventListener('click', e => {
         <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="saveigoal">Save</button></div>`); break;
     case 'saveigoal': S.income.goal = Math.max(1, parseInt($('#igoal').value) || 1000); save(); closeSheet(); render(); break;
     case 'detail': detailSheet(h); break;
+    case 'photo': photoViewer(PHOTOS.find(x => x.id === id)); break;
+    case 'photozoom': el.classList.toggle('zoom'); break;
+    case 'pcat': photoCat = el.dataset.c; render(); break;
     case 'noop': break;
     case 'edit': closeSheet(); habitSheet(h); break;
     case 'newhabit': habitSheet(); break;
