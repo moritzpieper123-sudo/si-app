@@ -369,6 +369,7 @@ function viewToday(v) {
       <div class="glass"><b>${cnt('h-done' + d, st.due ? Math.round(st.ratio * 100) : 0)}%</b><span>Done</span></div>
       <div class="glass"><b>${cnt('h-best', si.best)}</b><span>Best streak</span></div>
     </div>
+    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
@@ -488,7 +489,8 @@ function viewIncome(v) {
     <div class="hero" style="margin-top:6px"><div class="pill"><b>${diff === null ? '–' : (diff >= 0 ? '+' : '') + diff + '%'}</b><span>vs last month</span></div><div class="pill"><b>€${cnt('inc-12', Math.round(total12), 'data-fmt="loc"')}</b><span>last 12 months</span></div></div>
     <h2>Sources</h2>
     ${S.income.sources.length ? S.income.sources.map(sr => `<div class="card flat row" data-act="editsrc" data-id="${sr.id}"><div class="grow"><div class="name">${esc(sr.name)}</div><div class="meta">${sr.recurring ? 'Monthly, recurring' : 'One month only'}</div></div><b class="amt">${eur(srcValue(sr, mk))}</b></div>`).join('') : ''}
-    <div class="actions"><button class="btn primary" data-act="newsrc">+ Add source</button><button class="btn" data-act="incgoal">Monthly goal</button></div>`;
+    <div class="actions"><button class="btn primary" data-act="newsrc">+ Add source</button><button class="btn" data-act="incgoal">Monthly goal</button></div>${subsHtml()}
+    `;
 }
 function sourceSheet(sr) {
   const n = sr || { name: '', recurring: true, entries: {} };
@@ -835,19 +837,16 @@ function viewStatsAll(v) {
   st.querySelector('h1') && st.querySelector('h1').remove();
   st.querySelector('p.sub') && st.querySelector('p.sub').remove();
   v.innerHTML = `<h1>Stats</h1><p class="sub">Your year at a glance. Open a section to see it.</p>
-    <details class="fold" open><summary>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></summary>${heatHtml()}</details>
     <details class="fold"><summary>Calendar</summary>${cal.innerHTML}</details>
     <details class="fold"><summary>Progress and stats</summary>${st.innerHTML}</details>`;
 }
 
 // Goals page now holds goals, income and monthly subscriptions
-function viewGoalsAll(v) {
-  const g = document.createElement('div');
-  viewGoals(g);
+function viewGoalsAll(v) { viewGoals(v); }
+function subsHtml() {
   const subTotal = S.subs.reduce((a, s) => a + s.amount, 0);
   const net = Math.round(incomeTotal(mkey(new Date())) - subTotal);
-  v.innerHTML = `${g.innerHTML}
-    <h2>Subscriptions</h2>
+  return `<h2>Subscriptions</h2>
     <div class="glass card">${S.subs.length ? S.subs.map(s => `<div class="row" data-act="editsub" data-id="${s.id}" style="padding:6px 0"><div class="grow"><div class="name">${esc(s.name)}</div></div><b class="amt">${eur(s.amount)}</b></div>`).join('') : '<div class="meta">No subscriptions yet.</div>'}
       <div class="meta" style="margin-top:12px">Net income after subscriptions this month: <b>${eur(net)}</b></div>
       <div class="actions"><button class="btn primary" data-act="newsub">+ Add subscription</button></div></div>`;
