@@ -367,3 +367,12 @@ details.fold>*:not(summary){padding-bottom:12px}
 .enter>*{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i,0) * 40ms)}
 .enter .qtile,.enter details.fold{animation:rise .55s var(--ease) both;animation-delay:calc(var(--j,0) * 50ms + 120ms)}
 .qtile:hover{transform:translateY(-2px)}
+
+/* folds: the plus turns into a cross, and the card glides */
+details.fold>summary::after{content:'+';transition:transform .35s var(--ease)}
+details.fold[open]>summary::after{content:'+';transform:rotate(45deg)}
+details.fold{transition:background .35s,box-shadow .35s}
+details.fold>summary{transition:opacity .25s}
+details.fold>summary:active{opacity:.6}
+.btn,.sq,.seg button,.cats button,.qtile{transition:transform .25s var(--ease),background .3s,color .3s,border-color .3s}
+.btn:active,.sq:active,.seg button:active,.cats button:active{transform:scale(.94)}

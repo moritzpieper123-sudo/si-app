@@ -269,6 +269,14 @@ function render() {
   runAnims(enter); runCounts(enter);
   lastPop = null; lastDrop = false;
 }
+// smooth folds: when a section opens, its contents ease in one after another
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.open || reduceMotion()) return;
+  [...d.children].forEach((c, i) => c.animate && c.animate(
+    [{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 380, delay: i * 35, easing: 'cubic-bezier(.22,.9,.3,1)', fill: 'backwards' }));
+}, true);
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab]');
   if (t) { buzz(8); go(t.dataset.tab); }
@@ -369,6 +377,7 @@ function viewToday(v) {
       <div class="glass"><b>${cnt('h-done' + d, st.due ? Math.round(st.ratio * 100) : 0)}%</b><span>Done</span></div>
       <div class="glass"><b>${cnt('h-best', si.best)}</b><span>Best streak</span></div>
     </div>
+    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
@@ -488,7 +497,8 @@ function viewIncome(v) {
     <div class="hero" style="margin-top:6px"><div class="pill"><b>${diff === null ? '–' : (diff >= 0 ? '+' : '') + diff + '%'}</b><span>vs last month</span></div><div class="pill"><b>€${cnt('inc-12', Math.round(total12), 'data-fmt="loc"')}</b><span>last 12 months</span></div></div>
     <h2>Sources</h2>
     ${S.income.sources.length ? S.income.sources.map(sr => `<div class="card flat row" data-act="editsrc" data-id="${sr.id}"><div class="grow"><div class="name">${esc(sr.name)}</div><div class="meta">${sr.recurring ? 'Monthly, recurring' : 'One month only'}</div></div><b class="amt">${eur(srcValue(sr, mk))}</b></div>`).join('') : ''}
-    <div class="actions"><button class="btn primary" data-act="newsrc">+ Add source</button><button class="btn" data-act="incgoal">Monthly goal</button></div>`;
+    <div class="actions"><button class="btn primary" data-act="newsrc">+ Add source</button><button class="btn" data-act="incgoal">Monthly goal</button></div>${subsHtml()}
+    `;
 }
 function sourceSheet(sr) {
   const n = sr || { name: '', recurring: true, entries: {} };
@@ -738,7 +748,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.4</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.6</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -835,19 +845,16 @@ function viewStatsAll(v) {
   st.querySelector('h1') && st.querySelector('h1').remove();
   st.querySelector('p.sub') && st.querySelector('p.sub').remove();
   v.innerHTML = `<h1>Stats</h1><p class="sub">Your year at a glance. Open a section to see it.</p>
-    <details class="fold" open><summary>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></summary>${heatHtml()}</details>
     <details class="fold"><summary>Calendar</summary>${cal.innerHTML}</details>
     <details class="fold"><summary>Progress and stats</summary>${st.innerHTML}</details>`;
 }
 
 // Goals page now holds goals, income and monthly subscriptions
-function viewGoalsAll(v) {
-  const g = document.createElement('div');
-  viewGoals(g);
+function viewGoalsAll(v) { viewGoals(v); }
+function subsHtml() {
   const subTotal = S.subs.reduce((a, s) => a + s.amount, 0);
   const net = Math.round(incomeTotal(mkey(new Date())) - subTotal);
-  v.innerHTML = `${g.innerHTML}
-    <h2>Subscriptions</h2>
+  return `<h2>Subscriptions</h2>
     <div class="glass card">${S.subs.length ? S.subs.map(s => `<div class="row" data-act="editsub" data-id="${s.id}" style="padding:6px 0"><div class="grow"><div class="name">${esc(s.name)}</div></div><b class="amt">${eur(s.amount)}</b></div>`).join('') : '<div class="meta">No subscriptions yet.</div>'}
       <div class="meta" style="margin-top:12px">Net income after subscriptions this month: <b>${eur(net)}</b></div>
       <div class="actions"><button class="btn primary" data-act="newsub">+ Add subscription</button></div></div>`;
