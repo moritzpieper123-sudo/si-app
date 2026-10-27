@@ -427,7 +427,7 @@ details.fold>summary:active{opacity:.6}
 .heatblock .heatgrid i{width:100%;aspect-ratio:1;border-radius:7px}
 
 /* heat map shows one month at a time, with arrows to move between months */
-.heatmonth{max-width:300px;margin:0 auto;overflow:visible;padding:0}
+.heatmonth{max-width:220px;margin:0 auto;overflow:visible;padding:0}
 .heatnav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
 .heatnav b{font-size:15px;font-weight:600}
 .heatnav button{width:36px;height:36px;border-radius:12px;background:var(--glass-2);border:1px solid var(--line);font-size:20px;line-height:1;color:inherit}
@@ -436,3 +436,27 @@ details.fold>summary:active{opacity:.6}
 .heatmonth .heatgrid i{width:auto;height:auto;aspect-ratio:1;border-radius:7px;background:rgba(255,255,255,.07)}
 .heatmonth .heatgrid i.fut{background:transparent}
 .heatmonth .heatgrid i.pad{background:transparent}
+
+/* habits grouped by category, with room before the plans fold */
+.hgroup{margin-bottom:22px}
+.hghead{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#8a8a93);margin:0 2px 10px}
+.hghead span{margin-left:auto;font-weight:500}
+.plansfold{margin-top:36px}
+
+/* goals: ring instead of bar */
+.g2{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:22px;background:var(--glass-2);border:1px solid var(--line);margin-bottom:14px}
+.g2top{display:flex;align-items:center;gap:14px}
+.g2ring{position:relative;width:68px;height:68px;flex:none;display:grid;place-items:center}
+.g2ring b{position:absolute;font-size:14px;font-weight:700}
+.gring{width:68px;height:68px;transform:rotate(-90deg)}
+.gring circle{fill:none;stroke-width:6;stroke-linecap:round}
+.gring-bg{stroke:rgba(255,255,255,.08)}
+.gring-fg{transition:stroke-dashoffset .6s var(--ease)}
+.g2 .gtitle{font-size:17px;font-weight:600}
+.g2status{font-size:13px;margin-top:4px}
+.g2btns{display:flex;gap:8px;flex-wrap:wrap}
+.g2btns .gcheck{margin-left:auto}
+/* the new goal card resets the old absolute button rules */
+.goalcard.g2{display:flex;flex-direction:column;gap:12px;position:relative;align-items:stretch;margin-bottom:14px}
+.g2 .sq{width:auto;height:44px;min-width:56px;padding:0 14px;font-size:16px;border-radius:14px}
+.g2btns .gcheck{position:static;right:auto;bottom:auto;margin-left:auto;width:auto;padding:0 16px}
