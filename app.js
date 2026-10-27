@@ -372,10 +372,9 @@ function viewToday(v) {
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
-    <h2>Gallery</h2>
-    <div class="glass card flat row" data-tab="gallery"><div class="grow"><div class="name">Plans and routines</div><div class="meta">${PHOTOS.length} pictures</div></div>
-      </div>
-`;
+    <h2>Go to</h2>
+    <div class="qgrid"><div class="glass qtile" data-tab="habits"><span class="qic">${IC.habits}</span><div class="name">Habits</div><div class="meta">Check off today</div></div><div class="glass qtile" data-tab="nutrition"><span class="qic">${IC.nutrition}</span><div class="name">Nutrition</div><div class="meta">Calories, protein, water</div></div><div class="glass qtile" data-tab="goals"><span class="qic">${IC.goals}</span><div class="name">Goals</div><div class="meta">Goals, income, subscriptions</div></div><div class="glass qtile" data-tab="stats"><span class="qic">${IC.stats}</span><div class="name">Stats</div><div class="meta">Calendar and progress</div></div><div class="glass qtile" data-tab="gallery"><span class="qic">${IC.today}</span><div class="name">Plans</div><div class="meta">Training and routines</div></div></div>
+    `;
 }
 
 /* ---------- calendar ---------- */
@@ -739,7 +738,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.0</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.1</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
