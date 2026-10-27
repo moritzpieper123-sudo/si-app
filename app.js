@@ -407,13 +407,13 @@ function viewCalendar(v) {
 }
 
 /* ---------- goals ---------- */
-function goalPct(g) { return g.done ? 1 : g.mode === 'num' ? Math.min(1, g.progress / g.target) : 0; }
+function goalPct(g) { return g.done ? 1 : g.mode === 'num' ? Math.min(1, g.progress / g.target) : Math.min(1, (g.progress || 0) / 100); }
 function viewGoals(v) {
   const cats = ['All', ...CATS];
   const list = S.goals.filter(g => goalCat === 'All' || g.cat === goalCat)
     .sort((a, b) => (a.done - b.done) || (a.deadline || '9').localeCompare(b.deadline || '9'));
   v.innerHTML = `<h1>Goals</h1><p class="sub">Bigger targets with a deadline.</p>
-    <div class="cats">${cats.map(c => `<button class="${goalCat === c ? 'on' : ''}" data-act="gcat" data-c="${c}">${c}</button>`).join('')}</div>
+    ${foldCats('Category: ' + goalCat, cats.map(c => `<button class="${goalCat === c ? 'on' : ''}" data-act="gcat" data-c="${c}">${c}</button>`).join(''))}
     ${list.length ? list.map(g => {
       const left = g.deadline ? Math.ceil((parse(g.deadline) - parse(today())) / 864e5) : null;
       const pct = Math.round(goalPct(g) * 100);
@@ -428,6 +428,7 @@ function viewGoals(v) {
         <div class="gtitle">${esc(g.title)}</div>
         <div class="gpct">${cnt('g' + g.id, pct)}%${g.mode === 'num' ? `<small> ${g.progress}/${g.target} ${esc(g.unit || '')}</small>` : ''}</div>
         ${barHtml('gb:' + g.id, pct, g.done ? 'green' : '', 'margin-top:12px')}
+        ${g.done || g.mode === 'num' ? '' : `<div class="gbtns" style="margin-top:10px"><button class="sq" data-act="gpdec" data-id="${g.id}">−10%</button><button class="sq on" data-act="gpinc" data-id="${g.id}">+10%</button></div>`}
         ${g.desc ? `<div class="gdesc">${esc(g.desc)}</div>` : ''}
         <div class="meta" style="margin-top:8px"><span class="chip" style="background:color-mix(in srgb,${CATCOL[g.cat]} 22%,transparent);color:${CATCOL[g.cat]}">${g.cat}</span></div></div>
         <div class="gside"><span style="color:${sc}">${status}</span><b>${left === null ? '' : left < 0 ? -left : left}</b><small>${left === null ? 'no deadline' : left < 0 ? 'days over' : 'days left'}</small></div>
@@ -738,7 +739,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.1</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.2</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -793,15 +794,18 @@ function viewNutrition(v) {
   const d = nutDay(), g = S.nutrition.goal;
   const bar = (val, goal) => `<div style="height:8px;border-radius:99px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${goal ? Math.min(100, Math.round(val / goal * 100)) : 0}%;background:var(--accent)"></i></div>`;
   v.innerHTML = `<h1>Nutrition</h1><p class="sub">Enter your calories and protein for today.</p>
+    ${hydrationHtml(today())}
     <div class="glass card"><div class="meta">Calories</div><div class="name" style="font-size:26px">${d.kcal} <span class="meta">/ ${g.kcal} kcal</span></div>${bar(d.kcal, g.kcal)}
       <div class="meta" style="margin-top:14px">Protein</div><div class="name">${d.protein} <span class="meta">/ ${g.protein} g</span></div>${bar(d.protein, g.protein)}</div>
     <h2>Today</h2>
     <div class="glass card"><label style="margin-top:0">Calories eaten (kcal)</label><input id="nkcal" type="number" inputmode="numeric" value="${d.kcal || ''}" placeholder="0">
       <label>Protein eaten (g)</label><input id="nprot" type="number" inputmode="numeric" value="${d.protein || ''}" placeholder="0">
       <div class="actions"><button class="btn primary" data-act="savenut">Save today</button></div></div>
-    ${hydrationHtml(today())}
     <div class="actions"><button class="btn" data-act="nutgoal">Daily goal</button></div>`;
 }
+
+// category filter that folds away, so the categories are not always on screen
+const foldCats = (label, html) => `<details class="fold"><summary>${label}</summary><div class="cats" style="margin:10px 0 0">${html}</div></details>`;
 
 function hydrationHtml(d) {
   const w = S.water.log[d] || 0, wp = w / S.water.goal;
@@ -820,7 +824,7 @@ function viewHabits(v) {
   const shown = due.filter(h => habitCat === 'All' || h.cat === habitCat);
   v.innerHTML = `<h1>Habits</h1><p class="sub">Check off today's habits.</p>
     <div class="actions" style="margin:0 0 12px"><button class="btn primary" data-act="newhabit">+ New habit</button></div>
-    <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
+    ${foldCats('Category: ' + habitCat, cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join(''))}
     ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + New habit to create your first one.'}</div>`}`;
 }
 
@@ -831,8 +835,10 @@ function viewStatsAll(v) {
   cal.querySelector('h1') && cal.querySelector('h1').remove();
   st.querySelector('h1') && st.querySelector('h1').remove();
   st.querySelector('p.sub') && st.querySelector('p.sub').remove();
-  v.innerHTML = `<h1>Stats</h1><p class="sub">Calendar, progress and stats.</p>${cal.innerHTML}
-    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}${st.innerHTML}`;
+  v.innerHTML = `<h1>Stats</h1><p class="sub">Your year at a glance. Open a section to see it.</p>
+    <details class="fold" open><summary>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></summary>${heatHtml()}</details>
+    <details class="fold"><summary>Calendar</summary>${cal.innerHTML}</details>
+    <details class="fold"><summary>Progress and stats</summary>${st.innerHTML}</details>`;
 }
 
 // Goals page now holds goals, income and monthly subscriptions
@@ -1079,6 +1085,13 @@ document.addEventListener('click', e => {
       s.name = name; s.amount = Math.max(0, parseFloat($('#subamt').value) || 0);
       save(); closeSheet(); render(); break;
     }
+    case 'gpinc': {
+      if (!g) break;
+      g.progress = Math.min(100, (g.progress || 0) + 10);
+      if (g.progress >= 100) { g.done = true; toast('Goal reached: ' + g.title); }
+      save(); render(); break;
+    }
+    case 'gpdec': if (g) { g.progress = Math.max(0, (g.progress || 0) - 10); save(); render(); } break;
     case 'delsub': S.subs = S.subs.filter(x => x.id !== id); save(); closeSheet(); render(); break;
     case 'savenut':
       S.nutrition.logs[today()] = { kcal: Math.max(0, parseInt($('#nkcal').value) || 0), protein: Math.max(0, parseFloat($('#nprot').value) || 0) };
