@@ -56,7 +56,30 @@ const Food = (() => {
     return [...mine, ...online];
   }
 
-  return { forGrams, sumEntries, fromOpenFoodFacts, fromUsda, search };
+  // Describe food: "chicken rice with sauce" -> ['chicken', 'rice', 'sauce'].
+  // Word matching only, no AI: it splits on commas, "with", "and", "+" and "plus".
+  function split(text) {
+    return (text || '')
+      .toLowerCase()
+      .split(/,|\+|\bwith\b|\band\b|\bplus\b/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  // Tap-only follow-up questions, one per food that needs them. Only the
+  // first matching rule is used, so each food asks at most one question.
+  const RULES = [
+    { match: /sauce|dressing|mayo|ketchup/, q: 'Which sauce?', opts: ['None', 'Light', 'Heavy', 'Ketchup', 'Mayo', 'Pesto'] },
+    { match: /fried|chips|fries/, q: 'How much oil?', opts: ['Little', 'Normal', 'A lot'] },
+    { match: /rice|pasta|potato|bread/, q: 'Portion?', opts: ['Small', 'Medium', 'Large'] },
+    { match: /chicken|beef|pork|fish|steak/, q: 'Portion?', opts: ['Small', 'Medium', 'Large'] },
+  ];
+  function questionsFor(part) {
+    const rule = RULES.find(r => r.match.test(part));
+    return rule ? [{ food: part, q: rule.q, opts: rule.opts }] : [];
+  }
+
+  return { forGrams, sumEntries, fromOpenFoodFacts, fromUsda, search, split, questionsFor };
 })();
 
 if (typeof module !== 'undefined') module.exports = Food;
