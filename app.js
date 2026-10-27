@@ -285,28 +285,35 @@ document.addEventListener('click', e => {
 
 function heatHtml() {
   const t = today();
-  const start = addDays(weekStart(t), -11 * 7), endD = addDays(weekStart(t), 6);
-  let cells = '';
-  for (let d = start; d <= endD; d = addDays(d, 1)) {
-    if (d > t) { cells += '<i class="fut"></i>'; continue; }
-    let bg = '', st = null;
+  // the full year, stacked as blocks of 13 weeks (each block is a larger grid, no sideways scrolling)
+  const start = addDays(weekStart(t), -52 * 7), endD = addDays(weekStart(t), 6);
+  const dayCell = d => {
+    if (d > t) return '<i class="fut"></i>';
+    let bg = '';
     if (heatCat === 'All') {
-      st = dayStats(d);
+      const st = dayStats(d);
       if (st.due && (st.done || st.rest || st.ratio > 0)) {
         let best = null, bestScore = -1;
         CATS.forEach(c => { const cs = dayStats(d, c); const sc = cs.due ? cs.ratio * 100 + cs.done : -1; if (sc > bestScore) { bestScore = sc; best = c; } });
         bg = `background:${CATCOL[best]};opacity:${(.3 + st.ratio * .7).toFixed(2)}`;
       }
     } else {
-      st = dayStats(d, heatCat);
+      const st = dayStats(d, heatCat);
       if (st.due && (st.done || st.rest || st.ratio > 0)) bg = `background:${CATCOL[heatCat]};opacity:${(.25 + st.ratio * .75).toFixed(2)}`;
     }
-    cells += `<i style="${bg}" class="${d === t ? 'tdy' : ''}" data-act="heatday" data-d="${d}"></i>`;
+    return `<i style="${bg}" class="${d === t ? 'tdy' : ''}" data-act="heatday" data-d="${d}"></i>`;
+  };
+  const blocks = [];
+  for (let w = 0; w < 53; w += 13) {
+    const bs = addDays(start, w * 7);
+    let cells = '';
+    for (let i = 0; i < 13 * 7; i++) { const d = addDays(bs, i); if (d > endD) break; cells += dayCell(d); }
+    blocks.push(`<div class="heatblock"><div class="heatlab">${parse(bs).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</div><div class="heatgrid" style="grid-template-columns:repeat(13,1fr);grid-auto-columns:auto">${cells}</div></div>`);
   }
   const cats = ['All', ...CATS];
   return `<div class="heatwrap"><div class="cats">${cats.map(c => `<button class="${heatCat === c ? 'on' : ''}" data-act="heatcat" data-c="${c}">${c === 'All' ? c : `<b class="dot" style="background:${CATCOL[c]}"></b>${c}`}</button>`).join('')}</div>
-    <div class="heatscroll"><div class="heatgrid">${cells}</div></div>
-    <div class="heatinfo">${heatInfo || 'Tap a square to see that day. Showing the last 12 weeks.'}</div></div>`;
+    <div class="heatscroll">${blocks.join('')}</div>
+    <div class="heatinfo">${heatInfo || 'Tap a square to see that day. The whole year is shown, oldest at the top.'}</div></div>`;
 }
 
 /* ---------- today ---------- */
