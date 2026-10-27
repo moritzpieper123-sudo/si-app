@@ -193,7 +193,7 @@ function habitStreak(h) {
 }
 
 /* ---------- ui state ---------- */
-let heatCat = 'All', heatInfo = '';
+let heatCat = 'All', heatInfo = '', heatOff = 0;
 let tab = 'today', calMonth = new Date(), selDay = today(), goalCat = 'All', habitCat = 'All';
 
 const IC = {
@@ -277,6 +277,20 @@ document.addEventListener('toggle', e => {
     [{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'none' }],
     { duration: 380, delay: i * 35, easing: 'cubic-bezier(.22,.9,.3,1)', fill: 'backwards' }));
 }, true);
+// fold cards close with a smooth collapse instead of snapping shut
+document.addEventListener('click', e => {
+  const s = e.target.closest('details.fold > summary');
+  if (!s || reduceMotion()) return;
+  const d = s.parentElement;
+  if (!d.open || d.dataset.closing) return;
+  e.preventDefault();
+  d.dataset.closing = '1';
+  const from = d.getBoundingClientRect().height, to = s.getBoundingClientRect().height;
+  d.style.overflow = 'hidden';
+  d.animate([{ height: from + 'px' }, { height: to + 'px' }], { duration: 300, easing: 'cubic-bezier(.22,.9,.3,1)' }).onfinish = () => {
+    d.open = false; d.style.overflow = ''; delete d.dataset.closing;
+  };
+});
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab]');
   if (t) { buzz(8); go(t.dataset.tab); }
@@ -284,9 +298,9 @@ document.addEventListener('click', e => {
 
 
 function heatHtml() {
-  const t = today();
-  // the full year, stacked as blocks of 13 weeks (each block is a larger grid, no sideways scrolling)
-  const start = addDays(weekStart(t), -52 * 7), endD = addDays(weekStart(t), 6);
+  const t = today(), tt = parse(t);
+  const ms = new Date(tt.getFullYear(), tt.getMonth() - heatOff, 1);
+  const first = fmt(ms), last = fmt(new Date(ms.getFullYear(), ms.getMonth() + 1, 0));
   const dayCell = d => {
     if (d > t) return '<i class="fut"></i>';
     let bg = '';
@@ -303,17 +317,17 @@ function heatHtml() {
     }
     return `<i style="${bg}" class="${d === t ? 'tdy' : ''}" data-act="heatday" data-d="${d}"></i>`;
   };
-  const blocks = [];
-  for (let w = 0; w < 53; w += 13) {
-    const bs = addDays(start, w * 7);
-    let cells = '';
-    for (let i = 0; i < 13 * 7; i++) { const d = addDays(bs, i); if (d > endD) break; cells += dayCell(d); }
-    blocks.push(`<div class="heatblock"><div class="heatlab">${parse(bs).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</div><div class="heatgrid" style="grid-template-columns:repeat(13,1fr);grid-auto-columns:auto">${cells}</div></div>`);
-  }
+  // one month at a time, Monday first; the arrows move back through up to two years
+  const pad = (ms.getDay() + 6) % 7;
+  let cells = '<i class="pad"></i>'.repeat(pad);
+  for (let d = first; d <= last; d = addDays(d, 1)) cells += dayCell(d);
+  const label = ms.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const cats = ['All', ...CATS];
   return `<div class="heatwrap"><div class="cats">${cats.map(c => `<button class="${heatCat === c ? 'on' : ''}" data-act="heatcat" data-c="${c}">${c === 'All' ? c : `<b class="dot" style="background:${CATCOL[c]}"></b>${c}`}</button>`).join('')}</div>
-    <div class="heatscroll">${blocks.join('')}</div>
-    <div class="heatinfo">${heatInfo || 'Tap a square to see that day. The whole year is shown, oldest at the top.'}</div></div>`;
+    <div class="heatscroll heatmonth">
+      <div class="heatnav"><button data-act="heatprev" aria-label="Previous month" ${heatOff >= 24 ? 'disabled' : ''}>‹</button><b>${label}</b><button data-act="heatnext" aria-label="Next month" ${heatOff === 0 ? 'disabled' : ''}>›</button></div>
+      <div class="heatgrid">${cells}</div></div>
+    <div class="heatinfo">${heatInfo || 'Tap a square to see that day. Use the arrows to view other months.'}</div></div>`;
 }
 
 /* ---------- today ---------- */
@@ -384,7 +398,7 @@ function viewToday(v) {
       <div class="glass"><b>${cnt('h-done' + d, st.due ? Math.round(st.ratio * 100) : 0)}%</b><span>Done</span></div>
       <div class="glass"><b>${cnt('h-best', si.best)}</b><span>Best streak</span></div>
     </div>
-    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
+    <h2>Heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
@@ -870,7 +884,11 @@ function viewHabits(v) {
   v.innerHTML = `<h1>Habits</h1><p class="sub">Check off today's habits.</p>
     <div class="actions" style="margin:0 0 12px"><button class="btn primary" data-act="newhabit">+ New habit</button></div>
     ${foldCats('Category: ' + habitCat, cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join(''))}
-    ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + New habit to create your first one.'}</div>`}`;
+    ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + New habit to create your first one.'}</div>`}
+    <details class="fold"><summary>Plans and routines</summary><div class="plansin" style="margin-top:10px"></div></details>`;
+  const pl = document.createElement('div'); viewGallery(pl);
+  pl.querySelector('h1') && pl.querySelector('h1').remove(); pl.querySelector('p.sub') && pl.querySelector('p.sub').remove();
+  v.querySelector('.plansin').append(...pl.childNodes);
 }
 
 // Stats page now holds the calendar, the year heat map and the stats
@@ -1109,6 +1127,8 @@ document.addEventListener('click', e => {
       setTimeout(() => { const i = $('#tval'); i && i.focus(); }, 350); break;
     case 'savetval': { const was = isDone(h, d); setLog(h, d, Math.max(0, parseFloat($('#tval').value) || 0)); if (!was && isDone(h, d)) lastPop = h.id; save(); closeSheet(); render(); checkMilestone(); break; }
     case 'heatcat': heatCat = el.dataset.c; heatInfo = ''; { const sx = $('.heatscroll').scrollLeft; render(); $('.heatscroll').scrollLeft = sx; } break;
+    case 'heatprev': heatOff = Math.min(heatOff + 1, 24); heatInfo = ''; render(); break;
+    case 'heatnext': heatOff = Math.max(0, heatOff - 1); heatInfo = ''; render(); break;
     case 'heatday': {
       const dd = el.dataset.d, st = heatCat === 'All' ? dayStats(dd) : dayStats(dd, heatCat);
       heatInfo = `${parse(dd).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}: ` + (st.due ? `${st.done}/${st.due} done${st.rest ? ', ' + st.rest + ' rest' : ''}${st.complete ? ' ✓' : ''}` : 'no habits due');
