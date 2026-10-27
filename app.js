@@ -748,7 +748,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.6</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.7</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -783,13 +783,50 @@ function viewGallery(v) {
     <div class="cats">${cats.map(c => `<button class="${photoCat === c ? 'on' : ''}" data-act="pcat" data-c="${c}">${c}</button>`).join('')}</div>
     ${shown.map(p => `<div class="glass card flat row" data-act="photo" data-id="${p.id}"><div class="grow"><div class="name">${esc(p.title)}</div><div class="meta">${esc(p.note)}</div></div><span class="meta">›</span></div>`).join('')}`;
 }
+// anatomical body, front and back, with the trained muscles highlighted
+const MUSCLE_PATHS = {
+  front: [
+    ['pecs', 'M70 92 Q88 88 98 100 Q96 120 88 124 Q72 122 66 110 Z'], ['pecs', 'M130 92 Q112 88 102 100 Q104 120 112 124 Q128 122 134 110 Z'],
+    ['delt', 'M58 90 m-12 0 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0'], ['delt', 'M142 90 m-12 0 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0'],
+    ['bic', 'M44 124 Q38 140 42 158 L50 158 Q54 140 50 124 Z'], ['bic', 'M156 124 Q162 140 158 158 L150 158 Q146 140 150 124 Z'],
+    ['abs', 'M86 128 L114 128 L114 186 L86 186 Z'],
+    ['obl', 'M66 132 L82 132 L82 186 L70 180 Z'], ['obl', 'M134 132 L118 132 L118 186 L130 180 Z'],
+    ['quad', 'M74 226 Q82 224 94 226 L90 326 Q80 330 70 324 Z'], ['quad', 'M126 226 Q118 224 106 226 L110 326 Q120 330 130 324 Z'],
+  ],
+  back: [
+    ['trap', 'M80 70 L100 62 L120 70 L110 96 L100 120 L90 96 Z'],
+    ['lat', 'M72 100 Q66 140 88 178 L98 150 Z'], ['lat', 'M128 100 Q134 140 112 178 L102 150 Z'],
+    ['delt', 'M58 90 m-12 0 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0'], ['delt', 'M142 90 m-12 0 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0'],
+    ['tri', 'M44 124 Q38 140 42 158 L50 158 Q54 140 50 124 Z'], ['tri', 'M156 124 Q162 140 158 158 L150 158 Q146 140 150 124 Z'],
+    ['ext', 'M96 96 L104 96 L104 200 L96 200 Z'],
+    ['glu', 'M74 214 m-14 0 a14 14 0 1 0 28 0 a14 14 0 1 0 -28 0'], ['glu', 'M126 214 m-14 0 a14 14 0 1 0 28 0 a14 14 0 1 0 -28 0'],
+    ['ham', 'M72 240 L90 240 L88 320 L72 320 Z'], ['ham', 'M128 240 L110 240 L112 320 L128 320 Z'],
+    ['calf', 'M74 360 m-9 0 a9 22 0 1 0 18 0 a9 22 0 1 0 -18 0'], ['calf', 'M126 360 m-9 0 a9 22 0 1 0 18 0 a9 22 0 1 0 -18 0'],
+  ],
+};
+const BODY_BASE = 'M100 14 m-22 0 a22 24 0 1 0 44 0 a22 24 0 1 0 -44 0 Z M92 52 L108 52 L108 72 L92 72 Z M62 78 Q100 70 138 78 L146 130 L140 200 L132 215 L68 215 L60 200 L54 130 Z M60 84 Q44 92 40 130 L34 200 L44 202 L52 140 L62 110 Z M140 84 Q156 92 160 130 L166 200 L156 202 L148 140 L138 110 Z M70 212 L66 330 L62 392 L80 394 L90 330 L98 216 Z M130 212 L134 330 L138 392 L120 394 L110 330 L102 216 Z';
+function bodyView(view, hot) {
+  const paths = MUSCLE_PATHS[view].map(([m, d]) => `<path d="${d}" class="${hot.includes(m) ? 'hot' : ''}"/>`).join('');
+  return `<svg viewBox="0 0 200 410" class="anat" role="img" aria-label="${view} view"><path d="${BODY_BASE}" class="skin"/>${paths}</svg>`;
+}
+function bodyFigures(hotFront, hotBack) {
+  return `<div class="figs">${bodyView('front', hotFront)}${bodyView('back', hotBack)}</div>`;
+}
+const exRows = ex => ex.map(([n, s]) => `<div class="row" style="padding:7px 0"><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('');
+const DAY_HOT = [
+  { front: ['pecs', 'abs', 'obl', 'delt', 'bic'], back: ['tri'] },
+  { front: ['bic'], back: ['lat', 'trap', 'delt', 'ext'] },
+  { front: ['delt', 'abs', 'obl'], back: ['delt', 'trap', 'ext'] },
+];
 function planBody(p) {
-  if (p.id === 'plan') return p.days.map(d => `<h2>${esc(d.name)} · ${esc(d.focus)}</h2><div class="glass card">${d.ex.map(([n, s]) => `<div class="row" style="padding:7px 0"><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`).join('')
-    + p.extra.map(x => `<h2>${esc(x.title)}</h2><div class="glass card">${x.items.map(([n, s]) => `<div class="row" style="padding:7px 0"><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`).join('');
-  if (p.id === 'muscle') return p.days.map(d => `<h2>${esc(d.name)} · ${esc(d.focus)}</h2><div class="glass card"><div class="seg">${d.hot.map(m => `<span class="chip" style="position:static;background:rgba(255,90,70,.22);color:inherit;border:1px solid rgba(255,90,70,.45)">${esc(m)}</span>`).join('')}</div></div>`).join('')
-    + `<h2>Lower body</h2><div class="glass card"><div class="seg">${p.base.map(m => `<span class="chip" style="position:static">${esc(m)}</span>`).join('')}</div><div class="meta" style="margin-top:10px">Trained less often, so the colour stays calm.</div></div>`;
-  return `<h2>Steps</h2><div class="glass card">${p.steps.map((s, i) => `<div class="row" style="padding:7px 0"><span class="meta" style="width:26px;height:26px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#1a1606;font-weight:600">${i + 1}</span><div class="grow"><div class="name">${esc(s)}</div></div></div>`).join('')}</div>`
-    + p.extra.map(x => `<h2>${esc(x.title)}</h2><div class="glass card">${x.items.map(([n, s]) => `<div class="row" style="padding:7px 0"><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`).join('');
+  if (p.id === 'plan') return p.days.map((d, i) => `<details class="fold" ${i === 0 ? 'open' : ''}><summary>${esc(d.name)} · ${esc(d.focus)}</summary>
+      ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}<div style="margin-top:6px">${exRows(d.ex)}</div></details>`).join('')
+    + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
+  if (p.id === 'muscle') return p.days.map((d, i) => `<details class="fold" ${i === 0 ? 'open' : ''}><summary>${esc(d.name)} · ${esc(d.focus)}</summary>
+      ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}</details>`).join('')
+    + `<details class="fold"><summary>Lower body</summary><div class="seg" style="margin-top:10px">${p.base.map(m => `<span class="chip" style="position:static">${esc(m)}</span>`).join('')}</div></details>`;
+  return `<div class="stepgrid">${p.steps.map((s, i) => `<div class="stepcard"><span class="stepnum">${i + 1}</span><div class="name">${esc(s)}</div></div>`).join('')}</div>`
+    + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
 }
 function photoViewer(p) {
   $('#modal-root').innerHTML = `<div class="lightbox"><div class="lbbar"><div class="grow"><div class="name">${esc(p.title)}</div><div class="meta">${esc(p.note)}</div></div>
