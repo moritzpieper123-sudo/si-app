@@ -308,11 +308,12 @@ button:active{transition-duration:.1s}
 .pthumbs{display:flex}
 .pthumbs img{width:44px;height:30px;object-fit:cover;border-radius:8px;border:2px solid var(--card);margin-left:-14px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 .pthumbs img:first-child{margin-left:0}
-.lightbox{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.88);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);display:flex;flex-direction:column;animation:fade .3s}
+.lightbox{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.88);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);display:flex;flex-direction:column;animation:fade .3s;overflow-x:hidden}
 .lbbar{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 14px) 16px 10px}
 .hbtn2{width:46px;height:46px;border-radius:15px;background:var(--card);display:grid;place-items:center;flex:none}
 .hbtn2 svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-.lbscroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:flex-start;padding:6px 12px calc(env(safe-area-inset-bottom) + 20px)}
+.lbscroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;display:block;padding:6px 16px calc(env(safe-area-inset-bottom) + 20px);min-width:0;max-width:100vw;box-sizing:border-box}
+.lbscroll > *{max-width:100%;min-width:0;box-sizing:border-box}
 .lbscroll img{width:100%;flex:none;border-radius:16px;margin:auto 0;box-shadow:0 20px 50px rgba(0,0,0,.6);transition:width .45s var(--ease);animation:rise .55s var(--ease) both}
 .lbscroll img.zoom{width:260%;max-width:none;margin:0}
 
@@ -391,8 +392,8 @@ details.fold>summary:active{opacity:.6}
 
 /* no sideways scrolling: the year heat map fits the width */
 .heatscroll{overflow:visible;padding:0}
-.heatgrid{grid-auto-columns:1fr;grid-template-columns:none;width:100%;gap:2px;grid-template-rows:repeat(7,1fr)}
-.heatgrid i{width:auto;height:auto;aspect-ratio:1;border-radius:3px}
+.heatgrid{grid-auto-columns:1fr;grid-template-columns:none;width:100%;gap:5px;grid-template-rows:repeat(7,1fr)}
+.heatgrid i{width:auto;height:auto;aspect-ratio:1;border-radius:7px}
 
 /* training days, styled like the reference: figure on top, rows of exercises below */
 .daycard .figs{margin:6px 0 10px}
@@ -400,3 +401,27 @@ details.fold>summary:active{opacity:.6}
 .exrow{display:flex;align-items:center;gap:12px;padding:12px 12px;border-radius:16px;background:var(--glass-2);border:1px solid var(--line)}
 .exdot{width:8px;height:8px;border-radius:50%;background:#ff5a4a;box-shadow:0 0 10px rgba(255,90,74,.8);flex:none}
 .exgo{width:32px;height:32px;border-radius:11px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:20px;flex:none}
+
+/* evening routine as a mind map: hub in the middle, branches alternate left and right */
+.figs{max-width:100%;overflow:hidden}
+.anat{max-width:45%;height:auto;min-width:0}
+.mind{position:relative;padding:4px 0 8px}
+.mhub{margin:0 auto 18px;max-width:70%;text-align:center;padding:16px 14px;border-radius:99px;background:linear-gradient(160deg,rgba(255,214,102,.35),rgba(255,214,102,.08));border:1px solid rgba(255,214,102,.5);box-shadow:0 0 30px rgba(255,214,102,.25);display:flex;flex-direction:column;gap:2px}
+.mhub-t{font-family:'Syne',sans-serif;font-weight:800;font-size:17px}
+.mtree{position:relative;display:flex;flex-direction:column;gap:12px;padding:0 0 4px}
+.mtree::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px);background:linear-gradient(var(--accent),transparent);opacity:.6}
+.mnode{position:relative;width:calc(50% - 14px);display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:18px;background:var(--glass-2);border:1px solid var(--line);backdrop-filter:blur(20px);box-sizing:border-box;animation:rise .5s var(--ease) both}
+.mnode.l{align-self:flex-start;margin-right:auto}
+.mnode.r{align-self:flex-end;margin-left:auto}
+.mnode.alt{border-color:rgba(255,90,74,.45)}
+.mnode .name{white-space:normal;font-size:14px;line-height:1.3}
+.mnode .meta{margin-top:3px;font-size:12px}
+.mnode .stepnum{margin-bottom:0;flex:none}
+.mnode > div{min-width:0}
+
+/* full-year heat map: stacked blocks of 13 weeks, bigger squares, no sideways scrolling */
+.heatblock{margin:0 0 14px}
+.heatblock:last-child{margin-bottom:0}
+.heatlab{font-size:12px;color:var(--muted,#8a8a93);margin:0 0 6px}
+.heatblock .heatgrid{grid-template-rows:repeat(7,1fr);gap:5px;width:100%}
+.heatblock .heatgrid i{width:100%;aspect-ratio:1;border-radius:7px}
