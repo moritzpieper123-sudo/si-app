@@ -285,7 +285,7 @@ document.addEventListener('click', e => {
 
 function heatHtml() {
   const t = today();
-  const start = addDays(weekStart(t), -52 * 7), endD = addDays(weekStart(t), 6);
+  const start = addDays(weekStart(t), -11 * 7), endD = addDays(weekStart(t), 6);
   let cells = '';
   for (let d = start; d <= endD; d = addDays(d, 1)) {
     if (d > t) { cells += '<i class="fut"></i>'; continue; }
@@ -306,7 +306,7 @@ function heatHtml() {
   const cats = ['All', ...CATS];
   return `<div class="heatwrap"><div class="cats">${cats.map(c => `<button class="${heatCat === c ? 'on' : ''}" data-act="heatcat" data-c="${c}">${c === 'All' ? c : `<b class="dot" style="background:${CATCOL[c]}"></b>${c}`}</button>`).join('')}</div>
     <div class="heatscroll"><div class="heatgrid">${cells}</div></div>
-    <div class="heatinfo">${heatInfo || 'Tap a square to see that day. Scroll left for earlier months.'}</div></div>`;
+    <div class="heatinfo">${heatInfo || 'Tap a square to see that day. Showing the last 12 weeks.'}</div></div>`;
 }
 
 /* ---------- today ---------- */
@@ -748,7 +748,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.8</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.9</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -761,15 +761,7 @@ const PHOTOS = [
       { name: 'Day 2', focus: 'Back, biceps', ex: [['Lat pull (machine)', '3 × 8–12'], ['Seated row (machine)', '3 × 8–12'], ['Lat pulldown', '3 × 10–12'], ['Biceps curl (machine)', '3 × 10–15']] },
       { name: 'Day 3', focus: 'Shoulders, rotators, torso, abs', ex: [['Shoulder press (machine)', '3 × 8–12'], ['Lateral raise (machine)', '3 × 12–15'], ['Reverse butterfly', '3 × 12–15'], ['Torso rotation', '3 × 12 per side'], ['Abdominal press (machine)', '3 × 12–15']] },
     ],
-    extra: [{ title: 'Speed for tennis', items: [['Treadmill intervals', '15 s sprint, 45 s walk, 8–10 rounds']] },
-      { title: 'Added focus', items: [['Calf raise (machine)', '3 × 15–20'], ['Back extension (machine)', '3 × 12–15']] }] },
-  { id: 'muscle', title: 'Muscle intensity map', note: 'Which muscles the rotation hits hardest.', cat: 'Physique',
-    days: [
-      { name: 'Day 1', focus: 'Chest, triceps, abs', hot: ['Pectoralis major and minor', 'Anterior deltoid', 'Biceps brachii', 'Rectus abdominis', 'Obliques'] },
-      { name: 'Day 2', focus: 'Back, biceps', hot: ['Latissimus dorsi', 'Trapezius', 'Posterior deltoid', 'Triceps brachii', 'Rotator cuff'] },
-      { name: 'Day 3', focus: 'Shoulders, rotators, torso, abs', hot: ['Shoulder muscles', 'Rotator cuff (infraspinatus, teres minor)', 'Abdominals', 'Obliques', 'Erector spinae'] },
-    ],
-    base: ['Quadriceps', 'Hamstrings', 'Gluteus', 'Calves'] },
+    extra: [] },
   { id: 'evening', title: 'Evening routine', note: 'Eight steps before bed, plus whitening strip and brows when needed.', cat: 'Looks',
     steps: ['Wash your hands, so they are clean', 'Wash your face with clean hands', 'Apply cleanser', 'Brush your teeth', 'Apply moisturizer', 'Castor oil on eyebrows and lashes', 'Jaw exercise', 'Eye exercise'],
     extra: [{ title: 'Evening, before bed', items: [['Whitening strip', 'Apply after brushing']] }, { title: 'When needed', items: [['Eyebrows', 'Dye them']] }] },
@@ -823,16 +815,15 @@ function planBody(p) {
       ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}
       <div class="exlist">${d.ex.map(([n, s]) => `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(n)}</div><div class="meta">${esc(s)}</div></div><span class="exgo">›</span></div>`).join('')}</div></details>`).join('')
     + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
-  if (p.id === 'muscle') return p.days.map((d, i) => `<details class="fold" ${i === 0 ? 'open' : ''}><summary>${esc(d.name)} · ${esc(d.focus)}</summary>
-      ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}</details>`).join('')
-    + `<details class="fold"><summary>Lower body</summary><div class="seg" style="margin-top:10px">${p.base.map(m => `<span class="chip" style="position:static">${esc(m)}</span>`).join('')}</div></details>`;
-  return `<div class="stepgrid">${p.steps.map((s, i) => `<div class="stepcard"><span class="stepnum">${i + 1}</span><div class="name">${esc(s)}</div></div>`).join('')}</div>`
-    + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
+  // evening routine as a mind map: a hub in the middle, steps branching off alternately left and right
+  const branches = [...p.steps.map((s, i) => ({ n: i + 1, text: s })), ...p.extra.flatMap(x => x.items.map(([n, s]) => ({ n: '', text: n, sub: s, alt: true })))];
+  return `<div class="mind"><div class="mhub"><span class="mhub-t">Before bed</span><span class="meta">8 steps, every night</span></div>
+    <div class="mtree">${branches.map((b, i) => `<div class="mnode ${b.alt ? 'alt' : ''} ${i % 2 ? 'r' : 'l'}">${b.n ? `<span class="stepnum">${b.n}</span>` : ''}<div><div class="name">${esc(b.text)}</div>${b.sub ? `<div class="meta">${esc(b.sub)}</div>` : ''}</div></div>`).join('')}</div></div>`;
 }
 function photoViewer(p) {
   $('#modal-root').innerHTML = `<div class="lightbox"><div class="lbbar"><div class="grow"><div class="name">${esc(p.title)}</div><div class="meta">${esc(p.note)}</div></div>
     <button class="hbtn2" data-act="closesheet" aria-label="Close"><svg viewBox="0 0 24 24" class="o"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <div class="lbscroll" style="padding:16px">${planBody(p)}</div></div>`;
+    <div class="lbscroll">${planBody(p)}</div></div>`;
 }
 
 /* ---------- nutrition (manual daily totals) ---------- */
