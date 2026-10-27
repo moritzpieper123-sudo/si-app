@@ -699,7 +699,6 @@ function viewStats(v) {
   v.innerHTML = `<h1>Stats</h1><p class="sub">Your progress at a glance.</p>
     <div class="hero"><div class="glass"><b>${cnt('s-week', weekPct)}%</b><span>This week</span></div><div class="glass"><b>🔥 ${cnt('s-streak', si.cur)}</b><span>Streak</span></div><div class="glass"><b>${cnt('s-best', si.best)}</b><span>Best streak</span></div></div>
     <h2>Insights <span>daily reflection</span></h2>${insightsHtml()}
-    <h2>Last 7 days</h2>${bars(week.map(x => ({ l: DOW[dowMon(x.d)], h: x.r.ratio * 100 })))}
     <h2>Monthly completion</h2>${bars(monthly.map(x => ({ l: x.label, h: x.r * 100 })))}
     <h2>Water per day</h2>${bars(last7.map(d => ({ l: DOW[dowMon(d)], h: (S.water.log[d] || 0) / maxW * 100 })), 'blue')}
     <h2>Consistency <span>last 30 days</span></h2><div class="cons">${cons}</div>
@@ -739,7 +738,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.2</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.3</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
