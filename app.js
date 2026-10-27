@@ -374,7 +374,7 @@ function viewToday(v) {
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
     <h2>Gallery</h2>
     <div class="glass card flat row" data-tab="gallery"><div class="grow"><div class="name">Plans and routines</div><div class="meta">${PHOTOS.length} pictures</div></div>
-      <div class="pthumbs">${PHOTOS.slice(0, 3).map(p => `<img src="${p.src}" alt="" loading="lazy">`).join('')}</div></div>
+      </div>
 `;
 }
 
@@ -739,31 +739,53 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.8</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.9</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
 
-/* ---------- gallery ---------- */
+/* ---------- plans and routines (built in the app, no pictures) ---------- */
 const PHOTOS = [
-  { id: 'plan', src: 'photos/training-plan.jpg', title: '3-day training plan', note: 'Chest, back and shoulders on rotation, with sprint intervals for tennis.', cat: 'Physique' },
-  { id: 'muscle', src: 'photos/muscle-map.jpg', title: 'Muscle intensity map', note: 'Which muscles the rotation hits hardest.', cat: 'Physique' },
-  { id: 'evening', src: 'photos/evening-routine.jpg', title: 'Evening routine', note: 'Eight steps before bed, plus whitening strip and brows when needed.', cat: 'Looks' },
+  { id: 'plan', title: '3-day training plan', note: 'Chest, back and shoulders on rotation, with sprint intervals for tennis.', cat: 'Physique',
+    days: [
+      { name: 'Day 1', focus: 'Chest, triceps, abs', ex: [['Chest press (machine)', '3 × 8–12'], ['Incline chest press', '3 × 8–12'], ['Butterfly (machine)', '3 × 12–15'], ['Dip machine', '3 × 10–12'], ['Abdominal press (machine)', '3 × 12–15']] },
+      { name: 'Day 2', focus: 'Back, biceps', ex: [['Lat pull (machine)', '3 × 8–12'], ['Seated row (machine)', '3 × 8–12'], ['Lat pulldown', '3 × 10–12'], ['Biceps curl (machine)', '3 × 10–15']] },
+      { name: 'Day 3', focus: 'Shoulders, rotators, torso, abs', ex: [['Shoulder press (machine)', '3 × 8–12'], ['Lateral raise (machine)', '3 × 12–15'], ['Reverse butterfly', '3 × 12–15'], ['Torso rotation', '3 × 12 per side'], ['Abdominal press (machine)', '3 × 12–15']] },
+    ],
+    extra: [{ title: 'Speed for tennis', items: [['Treadmill intervals', '15 s sprint, 45 s walk, 8–10 rounds']] },
+      { title: 'Added focus', items: [['Calf raise (machine)', '3 × 15–20'], ['Back extension (machine)', '3 × 12–15']] }] },
+  { id: 'muscle', title: 'Muscle intensity map', note: 'Which muscles the rotation hits hardest.', cat: 'Physique',
+    days: [
+      { name: 'Day 1', focus: 'Chest, triceps, abs', hot: ['Pectoralis major and minor', 'Anterior deltoid', 'Biceps brachii', 'Rectus abdominis', 'Obliques'] },
+      { name: 'Day 2', focus: 'Back, biceps', hot: ['Latissimus dorsi', 'Trapezius', 'Posterior deltoid', 'Triceps brachii', 'Rotator cuff'] },
+      { name: 'Day 3', focus: 'Shoulders, rotators, torso, abs', hot: ['Shoulder muscles', 'Rotator cuff (infraspinatus, teres minor)', 'Abdominals', 'Obliques', 'Erector spinae'] },
+    ],
+    base: ['Quadriceps', 'Hamstrings', 'Gluteus', 'Calves'] },
+  { id: 'evening', title: 'Evening routine', note: 'Eight steps before bed, plus whitening strip and brows when needed.', cat: 'Looks',
+    steps: ['Wash your hands, so they are clean', 'Wash your face with clean hands', 'Apply cleanser', 'Brush your teeth', 'Apply moisturizer', 'Castor oil on eyebrows and lashes', 'Jaw exercise', 'Eye exercise'],
+    extra: [{ title: 'Evening, before bed', items: [['Whitening strip', 'Apply after brushing']] }, { title: 'When needed', items: [['Eyebrows', 'Dye them']] }] },
 ];
 let photoCat = 'All';
+const pill = n => `<span class="chip" style="position:static;display:inline-block">${esc(n)}</span>`;
 function viewGallery(v) {
   const cats = ['All', ...new Set(PHOTOS.map(p => p.cat))];
   const shown = PHOTOS.filter(p => photoCat === 'All' || p.cat === photoCat);
-  v.innerHTML = `<h1>Gallery</h1><p class="sub">Your plans and routines, always at hand.</p>
+  v.innerHTML = `<h1>Plans and routines</h1><p class="sub">Your training, muscle focus and evening routine.</p>
     <div class="cats">${cats.map(c => `<button class="${photoCat === c ? 'on' : ''}" data-act="pcat" data-c="${c}">${c}</button>`).join('')}</div>
-    ${shown.map(p => `<div class="card flat photo" data-act="photo" data-id="${p.id}"><div class="pimg"><img src="${p.src}" alt="${esc(p.title)}" loading="lazy"><span class="chip">${p.cat}</span></div>
-      <div class="pcap"><div class="name">${esc(p.title)}</div><div class="meta">${esc(p.note)}</div></div></div>`).join('')}
-    <p class="hint">Tap a picture to open it large. Tap again to zoom in.</p>`;
+    ${shown.map(p => `<div class="glass card flat row" data-act="photo" data-id="${p.id}"><div class="grow"><div class="name">${esc(p.title)}</div><div class="meta">${esc(p.note)}</div></div><span class="meta">›</span></div>`).join('')}`;
+}
+function planBody(p) {
+  if (p.id === 'plan') return p.days.map(d => `<h2>${esc(d.name)} · ${esc(d.focus)}</h2><div class="glass card">${d.ex.map(([n, s]) => `<div class="row" style="padding:7px 0"><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`).join('')
+    + p.extra.map(x => `<h2>${esc(x.title)}</h2><div class="glass card">${x.items.map(([n, s]) => `<div class="row" style="padding:7px 0"><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`).join('');
+  if (p.id === 'muscle') return p.days.map(d => `<h2>${esc(d.name)} · ${esc(d.focus)}</h2><div class="glass card"><div class="seg">${d.hot.map(m => `<span class="chip" style="position:static;background:rgba(255,90,70,.22);color:inherit;border:1px solid rgba(255,90,70,.45)">${esc(m)}</span>`).join('')}</div></div>`).join('')
+    + `<h2>Lower body</h2><div class="glass card"><div class="seg">${p.base.map(m => `<span class="chip" style="position:static">${esc(m)}</span>`).join('')}</div><div class="meta" style="margin-top:10px">Trained less often, so the colour stays calm.</div></div>`;
+  return `<h2>Steps</h2><div class="glass card">${p.steps.map((s, i) => `<div class="row" style="padding:7px 0"><span class="meta" style="width:26px;height:26px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#1a1606;font-weight:600">${i + 1}</span><div class="grow"><div class="name">${esc(s)}</div></div></div>`).join('')}</div>`
+    + p.extra.map(x => `<h2>${esc(x.title)}</h2><div class="glass card">${x.items.map(([n, s]) => `<div class="row" style="padding:7px 0"><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`).join('');
 }
 function photoViewer(p) {
-  $('#modal-root').innerHTML = `<div class="lightbox"><div class="lbbar"><div class="grow"><div class="name">${esc(p.title)}</div></div>
+  $('#modal-root').innerHTML = `<div class="lightbox"><div class="lbbar"><div class="grow"><div class="name">${esc(p.title)}</div><div class="meta">${esc(p.note)}</div></div>
     <button class="hbtn2" data-act="closesheet" aria-label="Close"><svg viewBox="0 0 24 24" class="o"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <div class="lbscroll"><img src="${p.src}" alt="${esc(p.title)}" data-act="photozoom"></div></div>`;
+    <div class="lbscroll" style="padding:16px">${planBody(p)}</div></div>`;
 }
 
 /* ---------- nutrition (manual daily totals) ---------- */
