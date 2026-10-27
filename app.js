@@ -206,7 +206,7 @@ const IC = {
   nutrition: '<svg viewBox="0 0 24 24"><path d="M12 21c-4.5 0-7-3-7-7 0-4.5 4-9 7-11 3 2 7 6.5 7 11 0 4-2.5 7-7 7z"/></svg>',
   gear: '<svg viewBox="0 0 24 24" class="o"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>',
 };
-const TABS = [['today', 'Home'], ['habits', 'Habits'], ['nutrition', 'Nutrition'], ['goals', 'Goals'], ['stats', 'Stats']];
+const TABS = [['today', 'Home'], ['habits', 'Habits'], ['nutrition', 'Nutrition'], ['goals', 'Goals'], ['income', 'Income'], ['stats', 'Stats']];
 function renderTabs() {
   $('#tabs').innerHTML = TABS.map(([id, label]) =>
     `<button data-tab="${id}" aria-label="${label}" class="${tab === id ? 'on' : ''}">${IC[id]}</button>`).join('');
@@ -738,7 +738,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.3</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.4</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -842,13 +842,11 @@ function viewStatsAll(v) {
 
 // Goals page now holds goals, income and monthly subscriptions
 function viewGoalsAll(v) {
-  const g = document.createElement('div'), inc = document.createElement('div');
-  viewGoals(g); viewIncome(inc);
-  inc.querySelector('h1') && inc.querySelector('h1').remove();
-  inc.querySelector('p.sub') && inc.querySelector('p.sub').remove();
+  const g = document.createElement('div');
+  viewGoals(g);
   const subTotal = S.subs.reduce((a, s) => a + s.amount, 0);
   const net = Math.round(incomeTotal(mkey(new Date())) - subTotal);
-  v.innerHTML = `${g.innerHTML}<h2>Income</h2>${inc.innerHTML}
+  v.innerHTML = `${g.innerHTML}
     <h2>Subscriptions</h2>
     <div class="glass card">${S.subs.length ? S.subs.map(s => `<div class="row" data-act="editsub" data-id="${s.id}" style="padding:6px 0"><div class="grow"><div class="name">${esc(s.name)}</div></div><b class="amt">${eur(s.amount)}</b></div>`).join('') : '<div class="meta">No subscriptions yet.</div>'}
       <div class="meta" style="margin-top:12px">Net income after subscriptions this month: <b>${eur(net)}</b></div>
