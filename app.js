@@ -50,7 +50,7 @@ const defaults = () => ({
   goals: [], reflections: {}, celebrated: {},
   settings: { pin: null, dayStart: 0, sound: true, haptics: true, lockAfter: 30, lastExport: null },
   income: { goal: 1000, sources: [] },
-  nutrition: { goal: { kcal: 3250, protein: 145 }, usdaKey: '', logs: {}, saved: [] },
+  nutrition: { goal: { kcal: 3250, protein: 145 }, logs: {} },
 });
 let S = load();
 function load() {
@@ -745,7 +745,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.6</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.7</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -772,42 +772,19 @@ function photoViewer(p) {
     <div class="lbscroll"><img src="${p.src}" alt="${esc(p.title)}" data-act="photozoom"></div></div>`;
 }
 
-/* ---------- nutrition (free, on the phone) ---------- */
-const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
-const PORTION_G = { Small: 100, Medium: 150, Large: 220 };
-let nutDraft = null; // the meal being described: text, parts, and their answers
-const nutDay = () => S.nutrition.logs[today()] || [];
-const mealNow = () => { const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 16 ? 'Lunch' : h < 22 ? 'Dinner' : 'Snack'; };
-// grams for a food, from the answer to its question: null means nothing to add
-function gramsFor(q) {
-  const a = q && q.answer;
-  if (!a) return 100;
-  if (a === 'None') return 0;
-  if (PORTION_G[a]) return PORTION_G[a];
-  if (q.q === 'Which sauce?') return a === 'Heavy' ? 30 : 15;
-  return 100;
-}
+/* ---------- nutrition (manual daily totals) ---------- */
+const nutDay = () => S.nutrition.logs[today()] || { kcal: 0, protein: 0 };
 function viewNutrition(v) {
-  const list = nutDay(), t = Food.sumEntries(list), g = S.nutrition.goal;
+  const d = nutDay(), g = S.nutrition.goal;
   const bar = (val, goal) => `<div style="height:8px;border-radius:99px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${goal ? Math.min(100, Math.round(val / goal * 100)) : 0}%;background:var(--accent)"></i></div>`;
-  const draft = nutDraft ? nutDraft.parts.map((p, i) => `<div class="glass card"><div class="name">${esc(p.text)}</div>
-      ${p.qs.map(q => `<div class="meta" style="margin-top:10px">${esc(q.q)}</div><div class="seg">${q.opts.map(o => `<button class="${q.answer === o ? 'on' : ''}" data-act="qans" data-p="${i}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`).join('')}
-      ${p.loading ? '<div class="meta" style="margin-top:10px">Searching…</div>' : !p.results.length ? '<div class="meta" style="margin-top:10px">Nothing found. Try another word.</div>'
-        : p.results.map((r, j) => `<div class="row" style="margin-top:10px" data-act="addfood" data-p="${i}" data-r="${j}"><div class="grow"><div class="name">${esc(r.name)}</div><div class="meta">${r.source} · ${r.kcal} kcal per 100 g</div></div><span class="meta">+</span></div>`).join('')}</div>`).join('') : '';
-  const entries = list.length ? MEALS.map(m => {
-    const items = list.filter(e => e.meal === m);
-    return items.length ? `<h2>${m}</h2>` + items.map(e => `<div class="card flat row" data-act="delent" data-id="${e.id}"><div class="grow"><div class="name">${esc(e.name)}</div><div class="meta">${e.grams} g · ${e.kcal} kcal · P ${e.protein} C ${e.carbs} F ${e.fat}</div></div><span class="meta">×</span></div>`).join('') : '';
-  }).join('') : '<div class="empty">Nothing logged yet today.</div>';
-  v.innerHTML = `<h1>Nutrition</h1><p class="sub">Describe a meal, then tap the details that matter.</p>
-    <div class="glass card"><div class="meta">Calories today</div><div class="name" style="font-size:26px">${Math.round(t.kcal)} <span class="meta">/ ${g.kcal} kcal</span></div>${bar(t.kcal, g.kcal)}
-      <div class="meta" style="margin-top:14px">Protein</div><div class="name">${t.protein} <span class="meta">/ ${g.protein} g</span></div>${bar(t.protein, g.protein)}</div>
-    <h2>What did you eat?</h2>
-    <div class="glass card"><input id="ndesc" placeholder="e.g. chicken rice with sauce" value="${esc(nutDraft ? nutDraft.text : '')}">
-      <div class="actions"><button class="btn primary" data-act="describe">Search</button></div></div>
-    ${draft}
+  v.innerHTML = `<h1>Nutrition</h1><p class="sub">Enter your calories and protein for today.</p>
+    <div class="glass card"><div class="meta">Calories</div><div class="name" style="font-size:26px">${d.kcal} <span class="meta">/ ${g.kcal} kcal</span></div>${bar(d.kcal, g.kcal)}
+      <div class="meta" style="margin-top:14px">Protein</div><div class="name">${d.protein} <span class="meta">/ ${g.protein} g</span></div>${bar(d.protein, g.protein)}</div>
     <h2>Today</h2>
-    ${entries}
-    <div class="actions"><button class="btn" data-act="nutgoal">Goal and settings</button></div>`;
+    <div class="glass card"><label style="margin-top:0">Calories eaten (kcal)</label><input id="nkcal" type="number" inputmode="numeric" value="${d.kcal || ''}" placeholder="0">
+      <label>Protein eaten (g)</label><input id="nprot" type="number" inputmode="numeric" value="${d.protein || ''}" placeholder="0">
+      <div class="actions"><button class="btn primary" data-act="savenut">Save today</button></div></div>
+    <div class="actions"><button class="btn" data-act="nutgoal">Daily goal</button></div>`;
 }
 
 /* ---------- modal helpers ---------- */
@@ -1023,39 +1000,17 @@ document.addEventListener('click', e => {
       $('.heatinfo').textContent = heatInfo; break;
     }
     case 'more': go('more'); break;
-    case 'describe': {
-      const text = $('#ndesc').value.trim();
-      if (!text) { toast('Type a meal first'); break; }
-      const parts = Food.split(text).map(t => ({ text: t, qs: Food.questionsFor(t), results: [], loading: true }));
-      nutDraft = { text, parts };
-      render();
-      parts.forEach(async (p, i) => {
-        p.results = await Food.search(p.text, { saved: S.nutrition.saved, usdaKey: S.nutrition.usdaKey }).catch(() => []);
-        p.loading = false;
-        if (nutDraft && nutDraft.parts[i] === p && tab === 'nutrition') render();
-      });
-      break;
-    }
-    case 'qans': nutDraft.parts[+el.dataset.p].qs[0].answer = el.dataset.v; render(); break;
-    case 'addfood': {
-      const p = nutDraft.parts[+el.dataset.p], r = p.results[+el.dataset.r], q = p.qs[0];
-      const grams = gramsFor(q);
-      if (!grams) { toast('Nothing added'); break; }
-      const v = Food.forGrams(r, grams);
-      S.nutrition.logs[today()] = [...nutDay(), { id: uid(), meal: mealNow(), name: r.name, grams, ...v }];
-      if (r.source !== 'Saved' && !S.nutrition.saved.some(x => x.name === r.name)) S.nutrition.saved.push({ id: r.id, name: r.name, kcal: r.kcal, protein: r.protein, carbs: r.carbs, fat: r.fat });
-      nutDraft = null; save(); toast('Added ' + r.name); render(); break;
-    }
-    case 'delent': S.nutrition.logs[today()] = nutDay().filter(e => e.id !== id); save(); render(); break;
+    case 'savenut':
+      S.nutrition.logs[today()] = { kcal: Math.max(0, parseInt($('#nkcal').value) || 0), protein: Math.max(0, parseFloat($('#nprot').value) || 0) };
+      save(); toast('Saved'); render(); break;
     case 'nutgoal':
-      openSheet(`<h3>Nutrition goal</h3>
+      openSheet(`<h3>Daily goal</h3>
         <label>Calories per day</label><input id="ngkcal" type="number" inputmode="numeric" value="${S.nutrition.goal.kcal}">
         <label>Protein per day (g)</label><input id="ngprot" type="number" inputmode="numeric" value="${S.nutrition.goal.protein}">
-        <label>USDA API key (optional, free)</label><input id="ngusda" value="${esc(S.nutrition.usdaKey)}" placeholder="Paste your key">
         <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savenutgoal">Save</button></div>`); break;
     case 'savenutgoal':
       S.nutrition.goal = { kcal: Math.max(0, parseInt($('#ngkcal').value) || 0), protein: Math.max(0, parseInt($('#ngprot').value) || 0) };
-      S.nutrition.usdaKey = $('#ngusda').value.trim(); save(); closeSheet(); render(); break;
+      save(); closeSheet(); render(); break;
     case 'newsrc': sourceSheet(); break;
     case 'editsrc': sourceSheet(S.income.sources.find(x => x.id === id)); break;
     case 'savesrc': {
