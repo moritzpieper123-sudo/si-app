@@ -50,6 +50,8 @@ const defaults = () => ({
   goals: [], reflections: {}, celebrated: {},
   settings: { pin: null, dayStart: 0, sound: true, haptics: true, lockAfter: 30, lastExport: null },
   income: { goal: 1000, sources: [] },
+  subs: [],
+  nutrition: { goal: { kcal: 3250, protein: 145 }, logs: {} },
 });
 let S = load();
 function load() {
@@ -200,9 +202,11 @@ const IC = {
   goals: '<svg viewBox="0 0 24 24" class="o"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6" class="f"/></svg>',
   income: '<svg viewBox="0 0 24 24" class="o"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg>',
   stats: '<svg viewBox="0 0 24 24"><rect x="3" y="12" width="4.5" height="9" rx="1.2"/><rect x="9.8" y="3" width="4.5" height="18" rx="1.2"/><rect x="16.5" y="8" width="4.5" height="13" rx="1.2"/></svg>',
+  habits: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M8 12.5l2.7 2.7L16 9.5" class="o"/></svg>',
+  nutrition: '<svg viewBox="0 0 24 24"><path d="M12 21c-4.5 0-7-3-7-7 0-4.5 4-9 7-11 3 2 7 6.5 7 11 0 4-2.5 7-7 7z"/></svg>',
   gear: '<svg viewBox="0 0 24 24" class="o"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>',
 };
-const TABS = [['today', 'Home'], ['calendar', 'Calendar'], ['goals', 'Goals'], ['income', 'Income'], ['stats', 'Stats']];
+const TABS = [['today', 'Home'], ['habits', 'Habits'], ['nutrition', 'Nutrition'], ['goals', 'Goals'], ['stats', 'Stats']];
 function renderTabs() {
   $('#tabs').innerHTML = TABS.map(([id, label]) =>
     `<button data-tab="${id}" aria-label="${label}" class="${tab === id ? 'on' : ''}">${IC[id]}</button>`).join('');
@@ -249,7 +253,7 @@ function render() {
   const v = $('#view');
   const enter = tab !== lastTab; lastTab = tab;
   try {
-    ({ today: viewToday, calendar: viewCalendar, goals: viewGoals, income: viewIncome, stats: viewStats, more: viewMore, gallery: viewGallery })[tab](v);
+    ({ today: viewToday, habits: viewHabits, nutrition: viewNutrition, goals: viewGoalsAll, stats: viewStatsAll, calendar: viewCalendar, income: viewIncome, more: viewMore, gallery: viewGallery })[tab](v);
   } catch (err) {
     v.innerHTML = `<h1>Something went wrong</h1><div class="glass card"><div class="meta">${esc(err.message)}</div><div class="actions"><button class="btn primary" data-act="export">Save backup</button><button class="btn" data-tab="today">Home</button></div></div>`;
   }
@@ -259,7 +263,7 @@ function render() {
     v.querySelectorAll('.tile,.goalcard,.card.flat').forEach((c, i) => c.style.setProperty('--j', Math.min(i, 8)));
   }
   const hs = $('.heatscroll'); if (hs) hs.scrollLeft = hs.scrollWidth;
-  v.insertAdjacentHTML('afterbegin', tab === 'more' || tab === 'gallery'
+  v.insertAdjacentHTML('afterbegin', tab === 'more' || tab === 'gallery' || tab === 'nutrition'
     ? `<button class="hbtn" data-tab="today" aria-label="Back"><svg viewBox="0 0 24 24" class="o"><path d="M15 5l-7 7 7 7"/></svg></button>`
     : `<button class="hbtn" data-tab="more" aria-label="Settings">${IC.gear}</button>`);
   runAnims(enter); runCounts(enter);
@@ -365,15 +369,6 @@ function viewToday(v) {
       <div class="glass"><b>${cnt('h-done' + d, st.due ? Math.round(st.ratio * 100) : 0)}%</b><span>Done</span></div>
       <div class="glass"><b>${cnt('h-best', si.best)}</b><span>Best streak</span></div>
     </div>
-    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
-    <h2>Hydration</h2>
-    <div class="glass card"><div class="row">${waterFill(wp, 'water' + d)}
-      <div class="grow"><div class="name" style="font-size:24px">${cnt('wml' + d, w)} / ${S.water.goal} ml</div>
-      <div class="meta">${wp >= 1 ? 'Goal reached 💧' : Math.max(0, S.water.goal - w) + ' ml to go'}</div></div></div>
-      <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="watercustom">Custom</button><button data-act="water" data-ml="-1">Undo</button></div></div>
-    <h2>Habits <button class="btn small primary" data-act="newhabit">+ New</button></h2>
-    <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
-    ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + to create your first one.'}</div>`}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
@@ -719,6 +714,8 @@ function viewMore(v) {
   const archived = S.habits.filter(h => h.archived);
   const lastExp = S.settings.lastExport ? parse(S.settings.lastExport).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never';
   v.innerHTML = `<h1>Settings</h1><p class="sub">Make the app fit your routine.</p>
+    <h2>Nutrition</h2>
+    <div class="glass card flat row" data-tab="nutrition"><div class="grow"><div class="name">Calories and meals</div><div class="meta">Describe a meal, tap the details</div></div><span class="meta">›</span></div>
     <h2>Gallery</h2>
     <div class="glass card flat row" data-tab="gallery"><div class="grow"><div class="name">Plans and routines</div><div class="meta">Open your pictures</div></div><span class="meta">›</span></div>
     <h2>Hydration</h2>
@@ -742,7 +739,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.5</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 1.8</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -767,6 +764,75 @@ function photoViewer(p) {
   $('#modal-root').innerHTML = `<div class="lightbox"><div class="lbbar"><div class="grow"><div class="name">${esc(p.title)}</div></div>
     <button class="hbtn2" data-act="closesheet" aria-label="Close"><svg viewBox="0 0 24 24" class="o"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="lbscroll"><img src="${p.src}" alt="${esc(p.title)}" data-act="photozoom"></div></div>`;
+}
+
+/* ---------- nutrition (manual daily totals) ---------- */
+const nutDay = () => S.nutrition.logs[today()] || { kcal: 0, protein: 0 };
+function viewNutrition(v) {
+  const d = nutDay(), g = S.nutrition.goal;
+  const bar = (val, goal) => `<div style="height:8px;border-radius:99px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${goal ? Math.min(100, Math.round(val / goal * 100)) : 0}%;background:var(--accent)"></i></div>`;
+  v.innerHTML = `<h1>Nutrition</h1><p class="sub">Enter your calories and protein for today.</p>
+    <div class="glass card"><div class="meta">Calories</div><div class="name" style="font-size:26px">${d.kcal} <span class="meta">/ ${g.kcal} kcal</span></div>${bar(d.kcal, g.kcal)}
+      <div class="meta" style="margin-top:14px">Protein</div><div class="name">${d.protein} <span class="meta">/ ${g.protein} g</span></div>${bar(d.protein, g.protein)}</div>
+    <h2>Today</h2>
+    <div class="glass card"><label style="margin-top:0">Calories eaten (kcal)</label><input id="nkcal" type="number" inputmode="numeric" value="${d.kcal || ''}" placeholder="0">
+      <label>Protein eaten (g)</label><input id="nprot" type="number" inputmode="numeric" value="${d.protein || ''}" placeholder="0">
+      <div class="actions"><button class="btn primary" data-act="savenut">Save today</button></div></div>
+    ${hydrationHtml(today())}
+    <div class="actions"><button class="btn" data-act="nutgoal">Daily goal</button></div>`;
+}
+
+function hydrationHtml(d) {
+  const w = S.water.log[d] || 0, wp = w / S.water.goal;
+  return `
+    <h2>Hydration</h2>
+    <div class="glass card"><div class="row">${waterFill(wp, 'water' + d)}
+      <div class="grow"><div class="name" style="font-size:24px">${cnt('wml' + d, w)} / ${S.water.goal} ml</div>
+      <div class="meta">${wp >= 1 ? 'Goal reached 💧' : Math.max(0, S.water.goal - w) + ' ml to go'}</div></div></div>
+      <div class="seg" style="margin-top:14px">${S.water.quick.map(q => `<button data-act="water" data-ml="${q}">+${q} ml</button>`).join('')}<button data-act="watercustom">Custom</button><button data-act="water" data-ml="-1">Undo</button></div></div>
+`;
+}
+
+function viewHabits(v) {
+  const d = selDay, due = S.habits.filter(h => habitDue(h, d));
+  const cats = ['All', ...CATS];
+  const shown = due.filter(h => habitCat === 'All' || h.cat === habitCat);
+  v.innerHTML = `<h1>Habits</h1><p class="sub">Check off today's habits.</p>
+    <div class="actions" style="margin:0 0 12px"><button class="btn primary" data-act="newhabit">+ New habit</button></div>
+    <div class="cats">${cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join('')}</div>
+    ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + New habit to create your first one.'}</div>`}`;
+}
+
+// Stats page now holds the calendar, the year heat map and the stats
+function viewStatsAll(v) {
+  const cal = document.createElement('div'), st = document.createElement('div');
+  viewCalendar(cal); viewStats(st);
+  cal.querySelector('h1') && cal.querySelector('h1').remove();
+  st.querySelector('h1') && st.querySelector('h1').remove();
+  st.querySelector('p.sub') && st.querySelector('p.sub').remove();
+  v.innerHTML = `<h1>Stats</h1><p class="sub">Calendar, progress and stats.</p>${cal.innerHTML}
+    <h2>Year heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}${st.innerHTML}`;
+}
+
+// Goals page now holds goals, income and monthly subscriptions
+function viewGoalsAll(v) {
+  const g = document.createElement('div'), inc = document.createElement('div');
+  viewGoals(g); viewIncome(inc);
+  inc.querySelector('h1') && inc.querySelector('h1').remove();
+  inc.querySelector('p.sub') && inc.querySelector('p.sub').remove();
+  const subTotal = S.subs.reduce((a, s) => a + s.amount, 0);
+  const net = Math.round(incomeTotal(mkey(new Date())) - subTotal);
+  v.innerHTML = `${g.innerHTML}<h2>Income</h2>${inc.innerHTML}
+    <h2>Subscriptions</h2>
+    <div class="glass card">${S.subs.length ? S.subs.map(s => `<div class="row" data-act="editsub" data-id="${s.id}" style="padding:6px 0"><div class="grow"><div class="name">${esc(s.name)}</div></div><b class="amt">${eur(s.amount)}</b></div>`).join('') : '<div class="meta">No subscriptions yet.</div>'}
+      <div class="meta" style="margin-top:12px">Net income after subscriptions this month: <b>${eur(net)}</b></div>
+      <div class="actions"><button class="btn primary" data-act="newsub">+ Add subscription</button></div></div>`;
+}
+function subSheet(s) {
+  openSheet(`<h3>${s ? 'Edit subscription' : 'New subscription'}</h3>
+    <label>Name</label><input id="subname" value="${esc(s ? s.name : '')}" placeholder="e.g. Spotify, Gym">
+    <label>Amount per month (€)</label><input id="subamt" type="number" inputmode="decimal" value="${s ? s.amount : ''}" placeholder="0">
+    <div class="actions">${s ? `<button class="btn danger" data-act="delsub" data-id="${s.id}">Delete</button>` : ''}<button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savesub" data-id="${s ? s.id : ''}">Save</button></div>`);
 }
 
 /* ---------- modal helpers ---------- */
@@ -982,6 +1048,28 @@ document.addEventListener('click', e => {
       $('.heatinfo').textContent = heatInfo; break;
     }
     case 'more': go('more'); break;
+    case 'newsub': subSheet(); break;
+    case 'editsub': subSheet(S.subs.find(x => x.id === id)); break;
+    case 'savesub': {
+      const name = $('#subname').value.trim();
+      if (!name) { toast('Please enter a name'); break; }
+      let s = S.subs.find(x => x.id === id);
+      if (!s) { s = { id: uid() }; S.subs.push(s); }
+      s.name = name; s.amount = Math.max(0, parseFloat($('#subamt').value) || 0);
+      save(); closeSheet(); render(); break;
+    }
+    case 'delsub': S.subs = S.subs.filter(x => x.id !== id); save(); closeSheet(); render(); break;
+    case 'savenut':
+      S.nutrition.logs[today()] = { kcal: Math.max(0, parseInt($('#nkcal').value) || 0), protein: Math.max(0, parseFloat($('#nprot').value) || 0) };
+      save(); toast('Saved'); render(); break;
+    case 'nutgoal':
+      openSheet(`<h3>Daily goal</h3>
+        <label>Calories per day</label><input id="ngkcal" type="number" inputmode="numeric" value="${S.nutrition.goal.kcal}">
+        <label>Protein per day (g)</label><input id="ngprot" type="number" inputmode="numeric" value="${S.nutrition.goal.protein}">
+        <div class="actions"><button class="btn" data-act="closesheet">Cancel</button><button class="btn primary" data-act="savenutgoal">Save</button></div>`); break;
+    case 'savenutgoal':
+      S.nutrition.goal = { kcal: Math.max(0, parseInt($('#ngkcal').value) || 0), protein: Math.max(0, parseInt($('#ngprot').value) || 0) };
+      save(); closeSheet(); render(); break;
     case 'newsrc': sourceSheet(); break;
     case 'editsrc': sourceSheet(S.income.sources.find(x => x.id === id)); break;
     case 'savesrc': {
