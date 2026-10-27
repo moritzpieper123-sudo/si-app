@@ -398,12 +398,12 @@ function viewToday(v) {
       <div class="glass"><b>${cnt('h-done' + d, st.due ? Math.round(st.ratio * 100) : 0)}%</b><span>Done</span></div>
       <div class="glass"><b>${cnt('h-best', si.best)}</b><span>Best streak</span></div>
     </div>
-    <h2>Heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
     <h2>Go to</h2>
     <div class="qgrid"><div class="glass qtile" data-tab="habits"><span class="qic">${IC.habits}</span><div class="name">Habits</div><div class="meta">Check off today</div></div><div class="glass qtile" data-tab="nutrition"><span class="qic">${IC.nutrition}</span><div class="name">Nutrition</div><div class="meta">Calories, protein, water</div></div><div class="glass qtile" data-tab="goals"><span class="qic">${IC.goals}</span><div class="name">Goals</div><div class="meta">Goals, income, subscriptions</div></div><div class="glass qtile" data-tab="stats"><span class="qic">${IC.stats}</span><div class="name">Stats</div><div class="meta">Calendar and progress</div></div><div class="glass qtile" data-tab="gallery"><span class="qic">${IC.today}</span><div class="name">Plans</div><div class="meta">Training and routines</div></div></div>
+    <h2>Heat map <span>${heatCat === 'All' ? 'all categories' : heatCat}</span></h2>${heatHtml()}
     `;
 }
 
@@ -437,6 +437,11 @@ function viewCalendar(v) {
 }
 
 /* ---------- goals ---------- */
+// a thin ring that shows the goal progress, replaces the old bar
+function goalRing(pct, col) {
+  const r = 26, c = 2 * Math.PI * r;
+  return `<svg class="gring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="${r}" class="gring-bg"/><circle cx="32" cy="32" r="${r}" class="gring-fg" style="stroke:${col};stroke-dasharray:${c.toFixed(1)};stroke-dashoffset:${(c * (1 - pct / 100)).toFixed(1)}"/></svg>`;
+}
 function goalPct(g) { return g.done ? 1 : g.mode === 'num' ? Math.min(1, g.progress / g.target) : Math.min(1, (g.progress || 0) / 100); }
 function viewGoals(v) {
   const cats = ['All', ...CATS];
@@ -454,15 +459,14 @@ function viewGoals(v) {
         const total = Math.max(1, (parse(g.deadline) - parse(g.created)) / 864e5), elapsed = total - left;
         if (pct / 100 < (elapsed / total) * .8 && elapsed / total > .15) { status = 'Behind'; sc = 'var(--accent)'; }
       }
-      return `<div class="goalcard"><div class="grow" data-act="editgoal" data-id="${g.id}">
-        <div class="gtitle">${esc(g.title)}</div>
-        <div class="gpct">${cnt('g' + g.id, pct)}%${g.mode === 'num' ? `<small> ${g.progress}/${g.target} ${esc(g.unit || '')}</small>` : ''}</div>
-        ${barHtml('gb:' + g.id, pct, g.done ? 'green' : '', 'margin-top:12px')}
-        ${g.done || g.mode === 'num' ? '' : `<div class="gbtns" style="margin-top:10px"><button class="sq" data-act="gpdec" data-id="${g.id}">−10%</button><button class="sq on" data-act="gpinc" data-id="${g.id}">+10%</button></div>`}
+      const col = CATCOL[g.cat] || 'var(--accent)';
+      return `<div class="goalcard g2" style="--c:${col}">
+        <div class="g2top"><div class="g2ring">${goalRing(pct, col)}<b>${cnt('g' + g.id, pct)}%</b></div>
+          <div class="grow" data-act="editgoal" data-id="${g.id}"><div class="gtitle">${esc(g.title)}</div>
+            <div class="meta">${g.cat}${g.mode === 'num' ? ` · ${g.progress}/${g.target} ${esc(g.unit || '')}` : ''}</div>
+            <div class="g2status" style="color:${sc}">${status}${left === null ? '' : ' · ' + (left < 0 ? -left + ' days over' : left + ' days left')}</div></div></div>
         ${g.desc ? `<div class="gdesc">${esc(g.desc)}</div>` : ''}
-        <div class="meta" style="margin-top:8px"><span class="chip" style="background:color-mix(in srgb,${CATCOL[g.cat]} 22%,transparent);color:${CATCOL[g.cat]}">${g.cat}</span></div></div>
-        <div class="gside"><span style="color:${sc}">${status}</span><b>${left === null ? '' : left < 0 ? -left : left}</b><small>${left === null ? 'no deadline' : left < 0 ? 'days over' : 'days left'}</small></div>
-        ${g.done ? '' : g.mode === 'num' ? `<div class="gbtns"><button class="sq" data-act="gdec" data-id="${g.id}">−</button><button class="sq on" data-act="ginc" data-id="${g.id}">+</button></div>` : `<button class="sq on gcheck" data-act="gdone" data-id="${g.id}">✓</button>`}</div>`;
+        <div class="g2btns">${g.done ? '' : g.mode === 'num' ? `<button class="sq" data-act="gdec" data-id="${g.id}">−</button><button class="sq on" data-act="ginc" data-id="${g.id}">+</button>` : `<button class="sq" data-act="gpdec" data-id="${g.id}">−10%</button><button class="sq on" data-act="gpinc" data-id="${g.id}">+10%</button><button class="sq on gcheck" data-act="gdone" data-id="${g.id}">✓ Done</button>`}</div></div>`;
     }).join('') : '<div class="empty">No goals here yet. Tap + to add one.</div>'}
     <div class="actions"><button class="btn primary" data-act="newgoal">+ New goal</button></div>`;
 }
@@ -487,7 +491,7 @@ function smooth(pts) {
   }
   return d;
 }
-function incomeChart(vals, goal) {
+function incomeChart(vals, goal, col = '#6ee7a8', gid = 'ig') {
   const W = 360, H = 170, padT = 14, padB = 8;
   const max = Math.max(goal, ...vals, 1) * 1.1;
   const x = i => i * (W / (vals.length - 1)), y = v => padT + (H - padT - padB) * (1 - v / max);
@@ -495,11 +499,11 @@ function incomeChart(vals, goal) {
   const line = smooth(pts);
   const last = pts[pts.length - 1];
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-    <defs><linearGradient id="ig" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6ee7a8" stop-opacity=".28"/><stop offset="1" stop-color="#6ee7a8" stop-opacity="0"/></linearGradient></defs>
-    <line x1="0" x2="${W}" y1="${y(goal)}" y2="${y(goal)}" stroke="rgba(255,255,255,.25)" stroke-dasharray="4 5"/>
-    <path d="${line} L${W},${H} L0,${H} Z" fill="url(#ig)"/>
-    <path d="${line}" fill="none" stroke="#6ee7a8" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke" class="draw"/>
-    <circle cx="${last[0] - 4}" cy="${last[1]}" r="5" fill="#000" stroke="#6ee7a8" stroke-width="2.4" vector-effect="non-scaling-stroke"/></svg>`;
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    ${goal ? `<line x1="0" x2="${W}" y1="${y(goal)}" y2="${y(goal)}" stroke="rgba(255,255,255,.25)" stroke-dasharray="4 5"/>` : ''}
+    <path d="${line} L${W},${H} L0,${H} Z" fill="url(#${gid})"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke" class="draw"/>
+    <circle cx="${last[0] - 4}" cy="${last[1]}" r="5" fill="#000" stroke="${col}" stroke-width="2.4" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function viewIncome(v) {
   const now = new Date();
@@ -516,6 +520,10 @@ function viewIncome(v) {
     ${S.income.sources.length ? incomeChart(vals, goal) : '<div class="empty">Add your first income source to see the graph.</div>'}
     <div class="axis">${months.map((m, i) => i % 2 ? '' : `<span>${m.toLocaleDateString('en-GB', { month: 'short' })}</span>`).join('')}</div>
     <div class="hero" style="margin-top:6px"><div class="pill"><b>${diff === null ? '–' : (diff >= 0 ? '+' : '') + diff + '%'}</b><span>vs last month</span></div><div class="pill"><b>€${cnt('inc-12', Math.round(total12), 'data-fmt="loc"')}</b><span>last 12 months</span></div></div>
+    <div class="metric" style="margin-top:18px"><div class="mhead"><em>Left after subscriptions</em><span>/MONTH</span></div>
+      <div class="mval"><small>€</small>${cnt('inc-net', Math.round(cur - subTotal()), 'data-fmt="loc"')}<span class="mgoal">${eur(subTotal())} subscriptions</span></div></div>
+    ${S.income.sources.length ? incomeChart(vals.map(v => v - subTotal()), 0, '#f5d76e', 'ng') : ''}
+    <div class="axis">${months.map((m, i) => i % 2 ? '' : `<span>${m.toLocaleDateString('en-GB', { month: 'short' })}</span>`).join('')}</div>
     <h2>Sources</h2>
     ${S.income.sources.length ? S.income.sources.map(sr => `<div class="card flat row" data-act="editsrc" data-id="${sr.id}"><div class="grow"><div class="name">${esc(sr.name)}</div><div class="meta">${sr.recurring ? 'Monthly, recurring' : 'One month only'}</div></div><b class="amt">${eur(srcValue(sr, mk))}</b></div>`).join('') : ''}
     <div class="actions"><button class="btn primary" data-act="newsrc">+ Add source</button><button class="btn" data-act="incgoal">Monthly goal</button></div>${subsHtml()}
@@ -881,11 +889,13 @@ function viewHabits(v) {
   const d = selDay, due = S.habits.filter(h => habitDue(h, d));
   const cats = ['All', ...CATS];
   const shown = due.filter(h => habitCat === 'All' || h.cat === habitCat);
+  // grouped by category, so the list is easier to scan
+  const groups = habitCat === 'All' ? CATS.map(c => [c, shown.filter(h => h.cat === c)]).filter(g => g[1].length) : [[habitCat, shown]];
   v.innerHTML = `<h1>Habits</h1><p class="sub">Check off today's habits.</p>
     <div class="actions" style="margin:0 0 12px"><button class="btn primary" data-act="newhabit">+ New habit</button></div>
     ${foldCats('Category: ' + habitCat, cats.map(c => `<button class="${habitCat === c ? 'on' : ''}" data-act="hcat" data-c="${c}">${c}</button>`).join(''))}
-    ${shown.length ? tiles(shown.map(h => habitRow(h, d)).join('')) : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + New habit to create your first one.'}</div>`}
-    <details class="fold"><summary>Plans and routines</summary><div class="plansin" style="margin-top:10px"></div></details>`;
+    ${shown.length ? groups.map(([c, list]) => `<div class="hgroup"><div class="hghead"><b class="dot" style="background:${CATCOL[c]}"></b>${c}<span>${list.length}</span></div>${tiles(list.map(h => habitRow(h, d)).join(''))}</div>`).join('') : `<div class="glass empty">${S.habits.length ? 'Nothing due here today.' : 'No habits yet. Tap + New habit to create your first one.'}</div>`}
+    <details class="fold plansfold"><summary>Plans and routines</summary><div class="plansin" style="margin-top:10px"></div></details>`;
   const pl = document.createElement('div'); viewGallery(pl);
   pl.querySelector('h1') && pl.querySelector('h1').remove(); pl.querySelector('p.sub') && pl.querySelector('p.sub').remove();
   v.querySelector('.plansin').append(...pl.childNodes);
@@ -905,9 +915,9 @@ function viewStatsAll(v) {
 
 // Goals page now holds goals, income and monthly subscriptions
 function viewGoalsAll(v) { viewGoals(v); }
+const subTotal = () => S.subs.reduce((a, s) => a + s.amount, 0);
 function subsHtml() {
-  const subTotal = S.subs.reduce((a, s) => a + s.amount, 0);
-  const net = Math.round(incomeTotal(mkey(new Date())) - subTotal);
+  const net = Math.round(incomeTotal(mkey(new Date())) - subTotal());
   return `<h2>Subscriptions</h2>
     <div class="glass card">${S.subs.length ? S.subs.map(s => `<div class="row" data-act="editsub" data-id="${s.id}" style="padding:6px 0"><div class="grow"><div class="name">${esc(s.name)}</div></div><b class="amt">${eur(s.amount)}</b></div>`).join('') : '<div class="meta">No subscriptions yet.</div>'}
       <div class="meta" style="margin-top:12px">Net income after subscriptions this month: <b>${eur(net)}</b></div>
