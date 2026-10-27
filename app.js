@@ -748,7 +748,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.7</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.8</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -807,7 +807,7 @@ const MUSCLE_PATHS = {
 const BODY_BASE = 'M100 14 m-22 0 a22 24 0 1 0 44 0 a22 24 0 1 0 -44 0 Z M92 52 L108 52 L108 72 L92 72 Z M62 78 Q100 70 138 78 L146 130 L140 200 L132 215 L68 215 L60 200 L54 130 Z M60 84 Q44 92 40 130 L34 200 L44 202 L52 140 L62 110 Z M140 84 Q156 92 160 130 L166 200 L156 202 L148 140 L138 110 Z M70 212 L66 330 L62 392 L80 394 L90 330 L98 216 Z M130 212 L134 330 L138 392 L120 394 L110 330 L102 216 Z';
 function bodyView(view, hot) {
   const paths = MUSCLE_PATHS[view].map(([m, d]) => `<path d="${d}" class="${hot.includes(m) ? 'hot' : ''}"/>`).join('');
-  return `<svg viewBox="0 0 200 410" class="anat" role="img" aria-label="${view} view"><path d="${BODY_BASE}" class="skin"/>${paths}</svg>`;
+  return `<svg viewBox="0 0 200 410" class="anat" role="img" aria-label="${view} view"><defs><linearGradient id="hotgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#ff4d3d"/></linearGradient></defs><path d="${BODY_BASE}" class="skin"/>${paths}</svg>`;
 }
 function bodyFigures(hotFront, hotBack) {
   return `<div class="figs">${bodyView('front', hotFront)}${bodyView('back', hotBack)}</div>`;
@@ -819,8 +819,9 @@ const DAY_HOT = [
   { front: ['delt', 'abs', 'obl'], back: ['delt', 'trap', 'ext'] },
 ];
 function planBody(p) {
-  if (p.id === 'plan') return p.days.map((d, i) => `<details class="fold" ${i === 0 ? 'open' : ''}><summary>${esc(d.name)} · ${esc(d.focus)}</summary>
-      ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}<div style="margin-top:6px">${exRows(d.ex)}</div></details>`).join('')
+  if (p.id === 'plan') return p.days.map((d, i) => `<details class="fold daycard" ${i === 0 ? 'open' : ''}><summary>${esc(d.name)} · ${esc(d.focus)}</summary>
+      ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}
+      <div class="exlist">${d.ex.map(([n, s]) => `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(n)}</div><div class="meta">${esc(s)}</div></div><span class="exgo">›</span></div>`).join('')}</div></details>`).join('')
     + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
   if (p.id === 'muscle') return p.days.map((d, i) => `<details class="fold" ${i === 0 ? 'open' : ''}><summary>${esc(d.name)} · ${esc(d.focus)}</summary>
       ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}</details>`).join('')
