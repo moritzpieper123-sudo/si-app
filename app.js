@@ -269,6 +269,14 @@ function render() {
   runAnims(enter); runCounts(enter);
   lastPop = null; lastDrop = false;
 }
+// smooth folds: when a section opens, its contents ease in one after another
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.open || reduceMotion()) return;
+  [...d.children].forEach((c, i) => c.animate && c.animate(
+    [{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 380, delay: i * 35, easing: 'cubic-bezier(.22,.9,.3,1)', fill: 'backwards' }));
+}, true);
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab]');
   if (t) { buzz(8); go(t.dataset.tab); }
@@ -740,7 +748,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.5</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.6</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
