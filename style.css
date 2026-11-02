@@ -460,3 +460,14 @@ details.fold>summary:active{opacity:.6}
 .goalcard.g2{display:flex;flex-direction:column;gap:12px;position:relative;align-items:stretch;margin-bottom:14px}
 .g2 .sq{width:auto;height:44px;min-width:56px;padding:0 14px;font-size:16px;border-radius:14px}
 .g2btns .gcheck{position:static;right:auto;bottom:auto;margin-left:auto;width:auto;padding:0 16px}
+
+/* gym weights */
+.kgbox{display:flex;align-items:center;gap:6px;flex:none;margin:0}
+.kgbox input{width:64px;padding:10px 8px;text-align:center;font-weight:600;border-radius:12px}
+.kgbox span{font-size:12px;color:var(--dim)}
+.liftsvg{width:100%;height:auto;margin-top:10px;display:block;overflow:visible}
+.liftsvg .lg{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+.liftsvg .lt{fill:var(--dim);font-size:9px;font-family:inherit}
+.liftsvg .ll{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.liftsvg .la{fill:rgba(245,215,110,.12);stroke:none}
+.liftsvg .ld{fill:var(--accent);stroke:#0b0b0d;stroke-width:2}

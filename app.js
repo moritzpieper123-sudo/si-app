@@ -52,6 +52,7 @@ const defaults = () => ({
   income: { goal: 1000, sources: [] },
   subs: [],
   nutrition: { goal: { kcal: 3250, protein: 145 }, logs: {} },
+  lifts: {}, // gym weights: { 'dayIndex:exercise name': { 'YYYY-MM-DD': kg } }
 });
 let S = load();
 function load() {
@@ -777,7 +778,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 2.9</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 3.0</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -839,10 +840,61 @@ const DAY_HOT = [
   { front: ['bic'], back: ['lat', 'trap', 'delt', 'ext'] },
   { front: ['delt', 'abs', 'obl'], back: ['delt', 'trap', 'ext'] },
 ];
+
+/* ---------- gym weights (kg per exercise, typed straight into the plan) ---------- */
+const liftKey = (dayIdx, name) => `${dayIdx}:${name}`;
+const liftLatest = key => { const h = S.lifts[key] || {}, ds = Object.keys(h).sort(); return ds.length ? { d: ds[ds.length - 1], kg: h[ds[ds.length - 1]] } : null; };
+const liftNote = key => { const l = liftLatest(key); return l ? `Last: ${l.kg} kg · ${parse(l.d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'No weight yet'; };
+function liftRow(dayIdx, name, sets) {
+  const key = liftKey(dayIdx, name), l = liftLatest(key);
+  return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(name)}</div><div class="meta">${esc(sets)}</div><div class="meta liftnote">${esc(liftNote(key))}</div></div>
+    <label class="kgbox"><input class="kginput" type="number" inputmode="decimal" step="0.5" min="0" max="999" data-lift="${esc(key)}" value="${l ? l.kg : ''}" placeholder="–" aria-label="Weight in kg for ${esc(name)}"><span>kg</span></label></div>`;
+}
+// typing a weight logs it for today (clearing the field removes today's entry); no redraw, so the plan stays open
+document.addEventListener('change', e => {
+  const inp = e.target.closest && e.target.closest('.kginput');
+  if (!inp) return;
+  const key = inp.dataset.lift, raw = inp.value.replace(',', '.').trim(), kg = parseFloat(raw), t = today();
+  if (raw === '') { if (S.lifts[key]) { delete S.lifts[key][t]; if (!Object.keys(S.lifts[key]).length) delete S.lifts[key]; } }
+  else if (isNaN(kg) || kg < 0 || kg > 999) { toast('Enter a weight between 0 and 999 kg'); return; }
+  else { (S.lifts[key] = S.lifts[key] || {})[t] = Math.round(kg * 10) / 10; inp.value = S.lifts[key][t]; }
+  save();
+  const n = inp.closest('.exrow').querySelector('.liftnote'); if (n) n.textContent = liftNote(key);
+  if (raw !== '') { tone(660, .08); toast('Saved'); }
+});
+function liftChart(pts) {
+  const W = 300, H = 130, L = 34, R = 12, T = 12, B = 22;
+  const ys = pts.map(p => p.kg), t0 = parse(pts[0].d).getTime(), t1 = parse(pts[pts.length - 1].d).getTime();
+  let lo = Math.min(...ys), hi = Math.max(...ys); if (hi === lo) { lo -= 1; hi += 1; } const padY = (hi - lo) * .15; lo = Math.max(0, lo - padY); hi += padY;
+  const X = d => pts.length === 1 || t1 === t0 ? (L + W - R) / 2 : L + (parse(d).getTime() - t0) / (t1 - t0) * (W - L - R);
+  const Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.d).toFixed(1)} ${Y(p.kg).toFixed(1)}`).join(' ');
+  const area = `${line} L${X(pts[pts.length - 1].d).toFixed(1)} ${H - B} L${X(pts[0].d).toFixed(1)} ${H - B} Z`;
+  const f = d => parse(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const r = v => Math.round(v * 10) / 10;
+  return `<svg viewBox="0 0 ${W} ${H}" class="liftsvg" role="img" aria-label="Weight over time">
+    <line x1="${L}" x2="${W - R}" y1="${Y(hi)}" y2="${Y(hi)}" class="lg"/><line x1="${L}" x2="${W - R}" y1="${Y(lo)}" y2="${Y(lo)}" class="lg"/>
+    <text x="${L - 6}" y="${Y(hi) + 4}" text-anchor="end" class="lt">${r(hi)}</text><text x="${L - 6}" y="${Y(lo) + 4}" text-anchor="end" class="lt">${r(lo)}</text>
+    ${pts.length > 1 ? `<path d="${area}" class="la"/><path d="${line}" class="ll"/>` : ''}
+    ${pts.map(p => `<circle cx="${X(p.d).toFixed(1)}" cy="${Y(p.kg).toFixed(1)}" r="4" class="ld"><title>${f(p.d)}: ${p.kg} kg</title></circle>`).join('')}
+    <text x="${L}" y="${H - 5}" class="lt">${f(pts[0].d)}</text>${pts.length > 1 ? `<text x="${W - R}" y="${H - 5}" text-anchor="end" class="lt">${f(pts[pts.length - 1].d)}</text>` : ''}</svg>`;
+}
+function liftsHtml() {
+  const plan = PHOTOS.find(p => p.id === 'plan');
+  const cards = [];
+  plan.days.forEach((d, i) => d.ex.forEach(([n]) => {
+    const h = S.lifts[liftKey(i, n)]; if (!h) return;
+    const pts = Object.keys(h).sort().map(dd => ({ d: dd, kg: h[dd] })); if (!pts.length) return;
+    const first = pts[0].kg, last = pts[pts.length - 1].kg, diff = Math.round((last - first) * 10) / 10, best = Math.max(...pts.map(p => p.kg));
+    cards.push(`<div class="glass card"><div class="row"><div class="grow"><div class="name">${esc(n)}</div><div class="meta">${esc(d.name)} · Best ${best} kg · ${pts.length} ${pts.length === 1 ? 'entry' : 'entries'}</div></div>
+      <div style="text-align:right"><b style="font-size:22px">${last} kg</b><div class="meta" style="color:${diff > 0 ? 'var(--ok)' : 'var(--dim)'}">${pts.length > 1 ? (diff > 0 ? '+' : '') + diff + ' kg' : 'first entry'}</div></div></div>${liftChart(pts)}</div>`);
+  }));
+  return cards.length ? cards.join('') : '<div class="glass empty">No weights yet. Open Habits, then Plans and routines, then the 3-day training plan, and type your kg next to an exercise.</div>';
+}
 function planBody(p) {
   if (p.id === 'plan') return p.days.map((d, i) => `<details class="fold daycard" ${i === 0 ? 'open' : ''}><summary>${esc(d.name)} · ${esc(d.focus)}</summary>
       ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}
-      <div class="exlist">${d.ex.map(([n, s]) => `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(n)}</div><div class="meta">${esc(s)}</div></div><span class="exgo">›</span></div>`).join('')}</div></details>`).join('')
+      <div class="exlist">${d.ex.map(([n, s]) => liftRow(i, n, s)).join('')}</div></details>`).join('')
     + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
   // evening routine as a mind map: a hub in the middle, steps branching off alternately left and right
   const branches = [...p.steps.map((s, i) => ({ n: i + 1, text: s })), ...p.extra.flatMap(x => x.items.map(([n, s]) => ({ n: '', text: n, sub: s, alt: true })))];
@@ -910,6 +962,7 @@ function viewStatsAll(v) {
   st.querySelector('p.sub') && st.querySelector('p.sub').remove();
   v.innerHTML = `<h1>Stats</h1><p class="sub">Your year at a glance. Open a section to see it.</p>
     <details class="fold"><summary>Calendar</summary>${cal.innerHTML}</details>
+    <details class="fold"><summary>Gym weights</summary><div style="margin-top:10px">${liftsHtml()}</div></details>
     <details class="fold"><summary>Progress and stats</summary>${st.innerHTML}</details>`;
 }
 
