@@ -795,6 +795,10 @@ const PHOTOS = [
   { id: 'evening', title: 'Evening routine', note: 'Eight steps before bed, plus whitening strip and brows when needed.', cat: 'Looks',
     steps: ['Wash your hands, so they are clean', 'Wash your face with clean hands', 'Apply cleanser', 'Brush your teeth', 'Apply moisturizer', 'Castor oil on eyebrows and lashes', 'Jaw exercise', 'Eye exercise'],
     extra: [{ title: 'Evening, before bed', items: [['Whitening strip', 'Apply after brushing']] }, { title: 'When needed', items: [['Eyebrows', 'Dye them']] }] },
+  { id: 'run1', title: 'Running Unit 1', note: 'Zone 2 Cardio · 45–60 min', cat: 'Physique',
+    runSteps: [['Warm-up', '10 min'], ['Steady run', '45–60 min, even pace'], ['Cool-down', '10 min']], extra: [] },
+  { id: 'run2', title: 'Running Unit 2', note: '30/30 Interval Running · 30–35 min', cat: 'Physique',
+    runSteps: [['Warm-up', '10 min'], ['Intervals', '10–15 cycles of 30 s fast / 30 s slow']], extra: [] },
 ];
 let photoCat = 'All';
 const pill = n => `<span class="chip" style="position:static;display:inline-block">${esc(n)}</span>`;
@@ -896,6 +900,7 @@ function planBody(p) {
       ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}
       <div class="exlist">${d.ex.map(([n, s]) => liftRow(i, n, s)).join('')}</div></details>`).join('')
     + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
+  if (p.runSteps) return `<div style="margin-top:6px">${p.runSteps.map(([n, s], i) => `<div class="row" style="padding:9px 0"><span class="stepnum">${i + 1}</span><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`;
   // evening routine as a mind map: a hub in the middle, steps branching off alternately left and right
   const branches = [...p.steps.map((s, i) => ({ n: i + 1, text: s })), ...p.extra.flatMap(x => x.items.map(([n, s]) => ({ n: '', text: n, sub: s, alt: true })))];
   return `<div class="mind"><div class="mhub"><span class="mhub-t">Before bed</span><span class="meta">8 steps, every night</span></div>
