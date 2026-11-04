@@ -1,7 +1,7 @@
 :root{
   --bg:#0b0b0d; --glass:rgba(255,255,255,.07); --glass-2:rgba(255,255,255,.11);
   --line:rgba(255,255,255,.14); --text:#f4f2ea; --dim:rgba(244,242,234,.55);
-  --accent:#f5d76e; --accent-soft:rgba(245,215,110,.18); --ok:#4ade80; --rest:#7aa2c9;
+  --accent:#f5d76e; --accent-soft:rgba(245,215,110,.18); --ok:#4ade80; --rest:#7aa2c9; --sick:#b79cf0;
   --r:22px; --ease:cubic-bezier(.22,.9,.3,1);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -471,3 +471,8 @@ details.fold>summary:active{opacity:.6}
 .liftsvg .ll{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 .liftsvg .la{fill:rgba(245,215,110,.12);stroke:none}
 .liftsvg .ld{fill:var(--accent);stroke:#0b0b0d;stroke-width:2}
+
+/* sick mode */
+.day.sick{background:rgba(183,156,240,.35)}
+.heatgrid i.sick,.heatmonth .heatgrid i.sick{background:rgba(183,156,240,.5)}
+.card.sickon{border-color:var(--sick);box-shadow:0 0 18px rgba(183,156,240,.25)}

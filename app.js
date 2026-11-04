@@ -46,6 +46,7 @@ const EMOJI = ['😞', '😕', '😐', '🙂', '😄'];
 /* ---------- state ---------- */
 const defaults = () => ({
   habits: [], logs: {}, rests: {},
+  sick: { periods: [] }, // sick mode: [{ from, to }], to = null while it is still on
   water: { goal: 2500, quick: [150, 250, 500], log: {}, hist: {} },
   goals: [], reflections: {}, celebrated: {},
   settings: { pin: null, dayStart: 0, sound: true, haptics: true, lockAfter: 30, lastExport: null },
@@ -107,6 +108,10 @@ const habitActive = (h, d) => d >= h.created && (!h.archived || d < h.archived);
 // daily habits are due on their weekdays; weekly habits can be logged on any day of the week
 const habitDue = (h, d) => habitActive(h, d) && (isWeekly(h) || !h.days || h.days.includes(dowMon(d)));
 const isFuture = d => d > today();
+// sick mode freezes streaks: sick days are skipped, they neither build nor break a run
+const isSick = d => S.sick.periods.some(p => d >= p.from && (!p.to || d <= p.to));
+const sickNow = () => S.sick.periods.some(p => !p.to);
+const weekSick = d => weekDays(d).some(isSick);
 const isRest = (h, d) => (S.rests[d] || []).includes(h.id);
 const value = (h, d) => (S.logs[d] && S.logs[d][h.id]) || 0;
 const isMax = h => h.type === 'num' && h.mode === 'max';
@@ -132,6 +137,7 @@ function restsUsedThisPeriod(h, d) {
   return n;
 }
 function dayStats(d, cat) {
+  if (isSick(d)) return { due: 0, done: 0, rest: 0, ratio: 0, complete: false, sick: true };
   const due = S.habits.filter(h => dueForDay(h, d) && (!cat || h.cat === cat));
   if (!due.length) return { due: 0, done: 0, rest: 0, ratio: 0, complete: false };
   let done = 0, rest = 0;
@@ -162,14 +168,14 @@ function rate30(h) {
       const w = addDays(weekStart(t), -7 * i);
       if (addDays(w, 6) < h.created) continue;
       const done = weekDone(h, w);
-      if (i === 0 && !done) continue;
+      if ((i === 0 || weekSick(w)) && !done) continue;
       due++; if (done) ok++;
     }
     return due ? Math.round(ok / due * 100) : null;
   }
   for (let i = 0; i < 30; i++) {
     const d = addDays(t, -i);
-    if (!habitDue(h, d)) continue;
+    if (!habitDue(h, d) || isSick(d)) continue;
     if (i === 0 && !isDone(h, d) && !isRest(h, d)) continue; // today is still open
     due++; if (isDone(h, d) || isRest(h, d)) ok++;
   }
@@ -181,12 +187,12 @@ function habitStreak(h) {
   if (isWeekly(h)) {
     for (let w = weekStart(h.created); w <= t; w = addDays(w, 7)) {
       if (weekDone(h, w)) { run++; best = Math.max(best, run); }
-      else if (weekStart(t) !== w) run = 0;
+      else if (weekStart(t) !== w && !weekSick(w)) run = 0;
     }
     return { cur: run, best };
   }
   for (let d = h.created; d <= t; d = addDays(d, 1)) {
-    if (!habitDue(h, d)) continue;
+    if (!habitDue(h, d) || isSick(d)) continue;
     if (isDone(h, d) || isRest(h, d)) { run++; best = Math.max(best, run); }
     else if (d !== t) run = 0;
   }
@@ -305,6 +311,7 @@ function heatHtml() {
   const dayCell = d => {
     if (d > t) return '<i class="fut"></i>';
     let bg = '';
+    if (isSick(d)) return `<i class="sick ${d === t ? 'tdy' : ''}" data-act="heatday" data-d="${d}"></i>`;
     if (heatCat === 'All') {
       const st = dayStats(d);
       if (st.due && (st.done || st.rest || st.ratio > 0)) {
@@ -382,6 +389,12 @@ function detailSheet(h) {
     <div class="actions">${h.restLimit && !wk ? `<button class="btn" data-act="rest" data-id="${h.id}">${rest ? 'Undo rest day' : 'Take rest day'}</button>` : ''}<button class="btn" data-act="edit" data-id="${h.id}">Edit</button></div>
     <div class="actions"><button class="btn" data-act="archive" data-id="${h.id}">Archive</button><button class="btn primary" data-act="closesheet">Close</button></div>`);
 }
+function sickCard() {
+  const on = sickNow();
+  return `<div class="glass card row ${on ? 'sickon' : ''}"><div class="grow"><div class="name">${on ? '🤒 Sick mode is on' : 'Sick mode'}</div>
+    <div class="meta">${on ? 'Streaks are frozen. Get well soon.' : 'Freeze all streaks while you are ill'}</div></div>
+    <button class="btn small ${on ? 'primary' : ''}" data-act="sick">${on ? 'Turn off' : 'Turn on'}</button></div>`;
+}
 function viewToday(v) {
   const d = selDay, isToday = d === today();
   const due = S.habits.filter(h => habitDue(h, d));
@@ -399,6 +412,7 @@ function viewToday(v) {
       <div class="glass"><b>${cnt('h-done' + d, st.due ? Math.round(st.ratio * 100) : 0)}%</b><span>Done</span></div>
       <div class="glass"><b>${cnt('h-best', si.best)}</b><span>Best streak</span></div>
     </div>
+    ${sickCard()}
     <h2>Day reflection</h2>
     <div class="glass card row"><div class="grow"><div class="name">${S.reflections[d] ? 'Day score ' + rOverall(S.reflections[d]) + '%' : 'Reflect on your day'}</div><div class="meta">${S.reflections[d] ? 'Tap Edit to change your answers' : '20 quick taps and sliders, no typing'}</div></div>
       <button class="btn small primary" data-act="reflect">${S.reflections[d] ? 'Edit' : 'Start'}</button></div>
@@ -422,6 +436,7 @@ function viewCalendar(v) {
       else if (st.complete) cls += ' restonly';
       else if (st.ratio > 0) style = `background:rgba(245,215,110,${(.15 + st.ratio * .75).toFixed(2)});color:${st.ratio > .55 ? '#1a1606' : 'inherit'}`;
     }
+    if (isSick(d)) cls += ' sick';
     if (d === today()) cls += ' today';
     if (d === selDay) cls += ' sel';
     if (isFuture(d)) cls += ' fut';
@@ -431,7 +446,7 @@ function viewCalendar(v) {
   v.innerHTML = `
     <div class="cal-head"><button data-act="prevm">‹</button><h1 data-act="calToday" style="cursor:pointer"  style="margin:0;font-size:22px">${first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</h1><button data-act="nextm">›</button></div>
     <div class="glass cal">${cells}</div>
-    <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly done (brighter = more)</span><span><i style="background:var(--rest)"></i>Rest only</span></div>
+    <div class="legend"><span><i style="background:var(--ok)"></i>Complete</span><span><i style="background:var(--accent)"></i>Partly done (brighter = more)</span><span><i style="background:var(--rest)"></i>Rest only</span><span><i style="background:var(--sick)"></i>Sick day</span></div>
     <h2>${parse(sel).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
     ${due.length ? tiles(due.map(h => habitRow(h, sel)).join('')) : '<div class="glass empty">No habits due on this day.</div>'}
     <p class="hint">Tap a habit to tick it for any past day. Tap the month name to jump back to today.</p>`;
@@ -581,7 +596,7 @@ function computeInsights() {
   const t = today();
   // habits vs how you felt
   S.habits.forEach(h => {
-    const days = dates.filter(d => d <= t && habitDue(h, d) && !isRest(h, d));
+    const days = dates.filter(d => d <= t && habitDue(h, d) && !isRest(h, d) && !isSick(d));
     const yes = days.filter(d => isDone(h, d)), no = days.filter(d => !isDone(h, d));
     if (yes.length < 3 || no.length < 3) return;
     let best = null;
@@ -599,7 +614,7 @@ function computeInsights() {
     if (!hs.length) return;
     const full = [], part = [];
     dates.forEach(d => {
-      const due = hs.filter(h => !isWeekly(h) && habitDue(h, d));
+      const due = hs.filter(h => !isWeekly(h) && habitDue(h, d) && !isSick(d));
       const g = rGroup(S.reflections[d], c);
       if (!due.length || g === null) return;
       (due.every(h => isDone(h, d) || isRest(h, d)) ? full : part).push(g);
@@ -753,6 +768,9 @@ function viewMore(v) {
   const archived = S.habits.filter(h => h.archived);
   const lastExp = S.settings.lastExport ? parse(S.settings.lastExport).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never';
   v.innerHTML = `<h1>Settings</h1><p class="sub">Make the app fit your routine.</p>
+    <h2>Sick mode</h2>
+    ${sickCard()}
+    <p class="hint">While it is on, habit streaks, the day streak and your 30-day rates are frozen: sick days do not count and do not break anything. Turn it off when you are better.</p>
     <h2>Nutrition</h2>
     <div class="glass card flat row" data-tab="nutrition"><div class="grow"><div class="name">Calories and meals</div><div class="meta">Describe a meal, tap the details</div></div><span class="meta">›</span></div>
     <h2>Gallery</h2>
@@ -778,7 +796,7 @@ function viewMore(v) {
       <div class="actions"><button class="btn primary" data-act="export">Export file</button><button class="btn" data-act="import">Import</button></div>
       <div class="actions"><button class="btn" data-act="copybackup">Copy as text</button><button class="btn" data-act="pastebackup">Paste text</button></div>
       <input id="importfile" type="file" accept="application/json,.json" style="display:none"></div>
-    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 3.0</div></div>
+    <h2>About</h2><div class="glass card"><div class="meta">SI app, final version 3.1</div></div>
     <h2>Danger zone</h2>
     <div class="glass card"><button class="btn danger" data-act="wipe">Delete all data</button></div>`;
 }
@@ -795,6 +813,10 @@ const PHOTOS = [
   { id: 'evening', title: 'Evening routine', note: 'Eight steps before bed, plus whitening strip and brows when needed.', cat: 'Looks',
     steps: ['Wash your hands, so they are clean', 'Wash your face with clean hands', 'Apply cleanser', 'Brush your teeth', 'Apply moisturizer', 'Castor oil on eyebrows and lashes', 'Jaw exercise', 'Eye exercise'],
     extra: [{ title: 'Evening, before bed', items: [['Whitening strip', 'Apply after brushing']] }, { title: 'When needed', items: [['Eyebrows', 'Dye them']] }] },
+  { id: 'run1', title: 'Running Unit 1', note: 'Zone 2 Cardio · 45–60 min', cat: 'Physique',
+    runSteps: [['Warm-up', '10 min'], ['Steady run', '45–60 min, even pace'], ['Cool-down', '10 min']], extra: [] },
+  { id: 'run2', title: 'Running Unit 2', note: '30/30 Interval Running · 30–35 min', cat: 'Physique',
+    runSteps: [['Warm-up', '10 min'], ['Intervals', '10–15 cycles of 30 s fast / 30 s slow']], extra: [] },
 ];
 let photoCat = 'All';
 const pill = n => `<span class="chip" style="position:static;display:inline-block">${esc(n)}</span>`;
@@ -896,6 +918,7 @@ function planBody(p) {
       ${bodyFigures(DAY_HOT[i].front, DAY_HOT[i].back)}
       <div class="exlist">${d.ex.map(([n, s]) => liftRow(i, n, s)).join('')}</div></details>`).join('')
     + p.extra.map(x => `<details class="fold"><summary>${esc(x.title)}</summary><div style="margin-top:6px">${exRows(x.items)}</div></details>`).join('');
+  if (p.runSteps) return `<div style="margin-top:6px">${p.runSteps.map(([n, s], i) => `<div class="row" style="padding:9px 0"><span class="stepnum">${i + 1}</span><div class="grow"><div class="name">${esc(n)}</div></div><span class="meta">${esc(s)}</span></div>`).join('')}</div>`;
   // evening routine as a mind map: a hub in the middle, steps branching off alternately left and right
   const branches = [...p.steps.map((s, i) => ({ n: i + 1, text: s })), ...p.extra.flatMap(x => x.items.map(([n, s]) => ({ n: '', text: n, sub: s, alt: true })))];
   return `<div class="mind"><div class="mhub"><span class="mhub-t">Before bed</span><span class="meta">8 steps, every night</span></div>
@@ -1194,7 +1217,7 @@ document.addEventListener('click', e => {
     case 'heatnext': heatOff = Math.max(0, heatOff - 1); heatInfo = ''; render(); break;
     case 'heatday': {
       const dd = el.dataset.d, st = heatCat === 'All' ? dayStats(dd) : dayStats(dd, heatCat);
-      heatInfo = `${parse(dd).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}: ` + (st.due ? `${st.done}/${st.due} done${st.rest ? ', ' + st.rest + ' rest' : ''}${st.complete ? ' ✓' : ''}` : 'no habits due');
+      heatInfo = isSick(dd) ? `${parse(dd).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}: sick day, streaks frozen` : `${parse(dd).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}: ` + (st.due ? `${st.done}/${st.due} done${st.rest ? ', ' + st.rest + ' rest' : ''}${st.complete ? ' ✓' : ''}` : 'no habits due');
       $('.heatinfo').textContent = heatInfo; break;
     }
     case 'more': go('more'); break;
@@ -1323,6 +1346,16 @@ document.addEventListener('click', e => {
       break;
     case 'rprev': reflStep--; reflectSheet(); break;
     case 'setpin': pinSetup(); break;
+    case 'sick': {
+      const t = today();
+      if (sickNow()) {
+        const p = S.sick.periods.find(x => !x.to);
+        p.to = addDays(t, -1);
+        if (p.to < p.from) S.sick.periods.splice(S.sick.periods.indexOf(p), 1); // turned on and off the same day
+        toast('Welcome back. Streaks are running again');
+      } else { S.sick.periods.push({ from: t, to: null }); toast('Sick mode on. Streaks are frozen'); }
+      save(); render(); break;
+    }
     case 'rmpin': ask('Remove app lock', 'Anyone with your phone can then open the app.', 'Remove', () => { S.settings.pin = null; save(); render(); }); break;
     case 'export': exportBackup(); break;
     case 'copybackup':
