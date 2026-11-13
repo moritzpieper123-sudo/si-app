@@ -2,7 +2,7 @@
 /* Gym: a small training log. All data lives in localStorage on this phone. */
 
 const KEY = 'gym-data-v1';
-const VERSION = '1.0';
+const VERSION = '1.1';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const WEEK_MILESTONES = [4, 8, 12, 26, 52];
 const TOTAL_MILESTONES = [10, 25, 50, 100, 200];
@@ -13,7 +13,7 @@ const TOTAL_MILESTONES = [10, 25, 50, 100, 200];
 // lifts: { 'exercise name (lowercase)': { 'YYYY-MM-DD': kg } }
 const defaults = () => ({
   plan: { days: [] }, logs: {}, lifts: {}, celebrated: {},
-  settings: { pin: null, weeklyGoal: 3, sound: true, lockAfter: 30, lastExport: null },
+  settings: { theme: 'pink', pin: null, weeklyGoal: 3, sound: true, lockAfter: 30, lastExport: null },
 });
 let S = load();
 function load() {
@@ -175,21 +175,14 @@ function render() {
 }
 
 
-/* ---------- the cat (original chubby gray tabby, drawn in code) ---------- */
-function catSvg(cls = '', happy = false) {
-  const eye = happy
-    ? '<path d="M60 74q6-9 12 0M108 74q6-9 12 0" fill="none" stroke="#4a3340" stroke-width="3.5" stroke-linecap="round"/>'
-    : '<ellipse class="cat-eye" cx="66" cy="74" rx="4.2" ry="5.2" fill="#4a3340"/><ellipse class="cat-eye" cx="114" cy="74" rx="4.2" ry="5.2" fill="#4a3340"/>';
-  return `<svg class="mascot ${cls}" viewBox="0 0 180 150" aria-hidden="true">
-    <path d="M150 112c26-6 34-34 14-46-8-5-14 3-8 8 8 6 4 22-12 24z" fill="#b9b4bf"/><path d="M160 80l8 5M156 93l9 2" stroke="#8e8896" stroke-width="3.5" stroke-linecap="round"/>
-    <ellipse cx="90" cy="112" rx="58" ry="30" fill="#c9c4cf"/><path d="M60 92v14M76 90v18M92 90v18" stroke="#9a94a3" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-    <ellipse cx="62" cy="136" rx="14" ry="8" fill="#b9b4bf"/><ellipse cx="116" cy="136" rx="14" ry="8" fill="#b9b4bf"/>
-    <path d="M30 56 24 20l32 20z" fill="#c9c4cf"/><path d="M150 56l6-36-32 20z" fill="#c9c4cf"/><path d="M34 46l-3-15 14 9zM146 46l3-15-14 9z" fill="#ffb3cf"/>
-    <ellipse cx="90" cy="76" rx="68" ry="46" fill="#d6d1db"/>
-    <path d="M78 36v12M90 33v14M102 36v12" stroke="#9a94a3" stroke-width="3.5" stroke-linecap="round"/><path d="M24 70h10M26 82h9M146 70h10M145 82h9" stroke="#9a94a3" stroke-width="3" stroke-linecap="round"/>
-    ${eye}
-    <ellipse cx="46" cy="90" rx="9" ry="6" fill="#ff9ec3" opacity=".7"/><ellipse cx="134" cy="90" rx="9" ry="6" fill="#ff9ec3" opacity=".7"/>
-    <path d="M86 84h8l-4 4z" fill="#ff7eb0"/><path d="M90 88v3q-5 5-10 1M90 91q5 5 10 1" fill="none" stroke="#4a3340" stroke-width="2.6" stroke-linecap="round"/></svg>`;
+/* ---------- the mascot (Pusheen picture, cut out) ---------- */
+function catSvg(cls = '') { return `<img class="mascot ${cls}" src="icons/pusheen.png" alt="" draggable="false">`; }
+
+/* ---------- theme ---------- */
+function applyTheme() {
+  const t = S.settings.theme === 'dark' ? 'dark' : 'pink';
+  document.documentElement.dataset.theme = t;
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'dark' ? '#14090f' : '#ffeaf2';
 }
 
 /* ---------- Today ---------- */
@@ -318,6 +311,7 @@ function viewMore(v) {
   v.innerHTML = `<h1>Settings</h1><p class="sub">Everything stays on this phone.</p>
     <div class="glass card"><div class="steprow"><div><div class="name">Workouts per week</div><div class="meta">Needed to keep your streak</div></div>
       <div class="stepper"><button data-act="goal" data-n="-1">−</button><span class="val">${s.weeklyGoal}</span><button data-act="goal" data-n="1">+</button></div></div></div>
+    <div class="glass card"><div class="name" style="margin-bottom:10px">Look</div><div class="seg"><button class="${s.theme !== 'dark' ? 'on' : ''}" data-act="theme" data-t="pink">🌸 Pink mode</button><button class="${s.theme === 'dark' ? 'on' : ''}" data-act="theme" data-t="dark">🌙 Dark mode</button></div></div>
     <div class="glass card"><div class="steprow"><div class="name">Sound</div><button class="btn small" data-act="sound">${s.sound ? 'On' : 'Off'}</button></div></div>
     <div class="glass card"><div class="steprow"><div><div class="name">Passcode</div><div class="meta">4 digits to open the app</div></div>
       ${s.pin ? '<button class="btn small danger" data-act="pinoff">Remove</button>' : '<button class="btn small" data-act="pinon">Set</button>'}</div></div>
@@ -404,6 +398,7 @@ const ACTIONS = {
     S.plan.days.length ? ask('Replace your plan?', `The current plan will be replaced by ${days.length} new days. Logged weights stay saved.`, 'Replace', go) : go();
   },
   goal: t => { S.settings.weeklyGoal = Math.max(1, Math.min(7, S.settings.weeklyGoal + Number(t.dataset.n))); save(); render(); },
+  theme: t => { S.settings.theme = t.dataset.t; save(); applyTheme(); render(); },
   sound: () => { S.settings.sound = !S.settings.sound; save(); render(); },
   pinon: () => pinSetup(),
   pinoff: () => ask('Remove passcode?', 'Anyone with your phone can open the app.', 'Remove', () => { S.settings.pin = null; save(); render(); }),
@@ -423,7 +418,7 @@ async function exportBackup() {
 document.addEventListener('change', e => {
   if (e.target.id !== 'importfile' || !e.target.files[0]) return;
   const rd = new FileReader();
-  rd.onload = () => { try { const data = JSON.parse(rd.result); if (!data || !data.plan) throw new Error('x'); S = merge(data); save(); selDayId = null; render(); toast('Backup restored'); } catch (err) { toast('That file is not a valid backup'); } };
+  rd.onload = () => { try { const data = JSON.parse(rd.result); if (!data || !data.plan) throw new Error('x'); S = merge(data); save(); selDayId = null; applyTheme(); render(); toast('Backup restored'); } catch (err) { toast('That file is not a valid backup'); } };
   rd.readAsText(e.target.files[0]);
 });
 
@@ -476,6 +471,7 @@ document.addEventListener('visibilitychange', () => {
 })();
 
 /* ---------- boot ---------- */
+applyTheme();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline cache optional */ });
 render();
 lockIfNeeded();

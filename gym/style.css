@@ -571,3 +571,39 @@ input::placeholder,textarea::placeholder{color:rgba(91,58,74,.35)}
 .hero b span,.hero b small{font-size:inherit;color:inherit}
 .hero b small{font-size:15px;color:var(--dim)}
 .bigbtn.done{background:#e3f8ee}
+
+/* mascot picture */
+.mascot{filter:drop-shadow(0 6px 8px rgba(214,93,140,.25));-webkit-user-drag:none;user-select:none;width:140px}
+.mascot.small{width:78px;top:calc(env(safe-area-inset-top) + 14px)}
+.seg button{background:#fff;border:1.5px solid rgba(255,182,213,.6);color:var(--text)}
+.seg button.on{background:linear-gradient(180deg,#ff94bf,#ff6fa5);color:#fff;border-color:transparent}
+
+/* ===== dark mode (chosen in Settings) ===== */
+:root[data-theme=dark]{--bg:#14090f;--card:#251521;--line:rgba(255,160,200,.16);--text:#f7e8ef;--dim:rgba(247,232,239,.55);--accent:#ff7eb0;--accent-soft:rgba(255,126,176,.2);--ok:#5fd6a0;--pink2:rgba(255,160,200,.3)}
+[data-theme=dark] html,[data-theme=dark] body,:root[data-theme=dark] body{background:var(--bg)}
+html[data-theme=dark],html[data-theme=dark] body{background:#14090f!important;color:var(--text)}
+[data-theme=dark] #bg{background:radial-gradient(520px 340px at 100% 0%,rgba(255,126,176,.2),transparent 70%),radial-gradient(420px 420px at -10% 100%,rgba(140,50,100,.35),transparent 70%),#14090f}
+[data-theme=dark] h1{color:#ff8fbc}
+[data-theme=dark] .glass,[data-theme=dark] .card,[data-theme=dark] .flat,[data-theme=dark] .empty,[data-theme=dark] .week,[data-theme=dark] .cal,[data-theme=dark] .hero .glass{background:var(--card)!important;border-color:rgba(255,160,200,.16);box-shadow:0 6px 18px rgba(0,0,0,.4)}
+[data-theme=dark] .glass.sheet,[data-theme=dark] .sheet{background:rgba(32,18,28,.95);border-top-color:rgba(255,160,200,.3)}
+[data-theme=dark] .scrim{background:rgba(0,0,0,.6)}
+[data-theme=dark] .btn,[data-theme=dark] .seg button,[data-theme=dark] .daychips button,[data-theme=dark] .cal-head button,[data-theme=dark] .stepper button,[data-theme=dark] .pad button,[data-theme=dark] .hbtn{background:#33202d;color:var(--text);border-color:rgba(255,160,200,.18);box-shadow:none}
+[data-theme=dark] .btn.primary,[data-theme=dark] .bigbtn,[data-theme=dark] .seg button.on,[data-theme=dark] .daychips button.on,[data-theme=dark] #tabs button.on{background:linear-gradient(180deg,#ff94bf,#ff6fa5);color:#fff;border-color:transparent}
+[data-theme=dark] .btn.danger{color:#ff8aa8}
+[data-theme=dark] .bigbtn.done{background:rgba(95,214,160,.16);color:var(--ok)}
+[data-theme=dark] input,[data-theme=dark] select,[data-theme=dark] textarea{background:#33202d;border-color:rgba(255,160,200,.18);color:var(--text)}
+[data-theme=dark] input::placeholder,[data-theme=dark] textarea::placeholder{color:rgba(247,232,239,.3)}
+[data-theme=dark] .exrow{background:var(--card);border-color:rgba(255,160,200,.14);box-shadow:none}
+[data-theme=dark] .kgbox input{background:#33202d;color:#ff8fbc}
+[data-theme=dark] .week .day,[data-theme=dark] .day{background:rgba(255,255,255,.07);color:var(--text)}
+[data-theme=dark] .day.complete,[data-theme=dark] .week .day.complete{background:var(--ok);color:#07412a}
+[data-theme=dark] .hero b,[data-theme=dark] .chip{color:#ff8fbc}
+[data-theme=dark] .hero b small{color:var(--dim)}
+[data-theme=dark] .toast{background:rgba(45,26,38,.96);color:var(--text);border-color:rgba(255,160,200,.3)}
+[data-theme=dark] #tabs{background:rgba(37,21,33,.82);border-color:rgba(255,160,200,.2);box-shadow:0 10px 30px rgba(0,0,0,.55)}
+[data-theme=dark] #tabs button{color:rgba(247,232,239,.55)}
+[data-theme=dark] .liftsvg .lg{stroke:rgba(255,160,200,.2)}
+[data-theme=dark] .liftsvg .ld{stroke:#251521}
+[data-theme=dark] .exline{border-top-color:rgba(255,160,200,.2)}
+[data-theme=dark] .lock,[data-theme=dark] #lock-root .lock{background:#14090f!important}
+[data-theme=dark] .mascot{filter:drop-shadow(0 0 8px rgba(255,160,200,.35))}
