@@ -2,7 +2,7 @@
 /* Gym: a small training log. All data lives in localStorage on this phone. */
 
 const KEY = 'gym-data-v1';
-const VERSION = '1.1';
+const VERSION = '1.3';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const WEEK_MILESTONES = [4, 8, 12, 26, 52];
 const TOTAL_MILESTONES = [10, 25, 50, 100, 200];
@@ -59,6 +59,33 @@ function tone(freq = 660, dur = .12, vol = .05) {
     o.start(); o.stop(audioCtx.currentTime + dur);
   } catch (e) { /* audio unavailable */ }
 }
+
+
+/* ---------- starter plan (3-day cycle, built around her goals and Mo's plan) ---------- */
+// shared: true = the same exercise Mo does that day, so they can train it together
+const STARTER_PLAN = [
+  { name: 'Day 1 · Glutes + chest', ex: [
+    { name: 'Hip thrust', sets: '4 × 8–12' }, { name: 'Romanian deadlift', sets: '3 × 10–12' },
+    { name: 'Chest press (machine)', sets: '3 × 10–12', shared: true }, { name: 'Butterfly (machine)', sets: '3 × 12–15', shared: true },
+    { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true }, { name: 'Stairmaster', sets: '15–20 min', cardio: true }] },
+  { name: 'Day 2 · Thighs + back', ex: [
+    { name: 'Leg press (feet high and wide)', sets: '4 × 10–12' }, { name: 'Leg extension', sets: '3 × 12–15' }, { name: 'Seated leg curl', sets: '3 × 12–15' },
+    { name: 'Lat pull (machine)', sets: '3 × 10–12', shared: true }, { name: 'Seated row (machine)', sets: '3 × 10–12', shared: true },
+    { name: 'Lat pulldown', sets: '3 × 10–12', shared: true }, { name: 'Biceps curl (machine)', sets: '2 × 12–15', shared: true },
+    { name: 'Stairmaster', sets: '15–20 min', cardio: true }] },
+  { name: 'Day 3 · Glutes + shoulders', ex: [
+    { name: 'Glute kickback (cable or machine)', sets: '3 × 12–15 per leg' }, { name: 'Hip abduction (machine)', sets: '3 × 15–20' }, { name: 'Walking lunges', sets: '3 × 12 per leg' },
+    { name: 'Shoulder press (machine)', sets: '3 × 10–12', shared: true }, { name: 'Lateral raise (machine)', sets: '3 × 12–15', shared: true },
+    { name: 'Reverse butterfly', sets: '3 × 12–15', shared: true }, { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true },
+    { name: 'Stairmaster', sets: '15–20 min', cardio: true }] },
+  // fat-loss days: only on the days Mo trains something else (weekday 1 = Tue, 3 = Thu); not part of the 3-day cycle
+  { name: 'Tuesday · Fat loss', weekday: 1, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
+  { name: 'Thursday · Fat loss', weekday: 3, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
+];
+const starterDays = () => STARTER_PLAN.map(d => Object.assign({ id: uid() }, d, { ex: d.ex.map(e => Object.assign({}, e)) }));
+
+// first start: load the starter plan once
+if (!S.settings.seeded) { if (!S.plan.days.length) S.plan.days = starterDays(); S.settings.seeded = true; save(); }
 
 /* ---------- plan parsing: paste text, get training days ---------- */
 const SETS_END = /(\d+\s*[x×*]\s*\d+(?:\s*[-–]\s*\d+)?\s*(?:reps?|wdh\.?|kg)?|\d+\s*(?:sets?|sätze|saetze)\b.*)\s*$/i;
@@ -123,10 +150,14 @@ function streakInfo() {
 function suggestedDay() {
   const days = S.plan.days; if (!days.length) return null;
   const t = S.logs[today()]; if (t && t.day && days.some(d => d.id === t.day)) return t.day;
-  const last = Object.keys(S.logs).filter(d => S.logs[d].day && days.some(x => x.id === S.logs[d].day)).sort().pop();
-  if (!last) return days[0].id;
-  const i = days.findIndex(d => d.id === S.logs[last].day);
-  return days[(i + 1) % days.length].id;
+  // a day tied to a weekday (like the Tuesday fat-loss day) wins on that weekday
+  const wd = days.find(d => d.weekday === dowMon(today())); if (wd) return wd.id;
+  // otherwise the 3-day cycle goes on with the next day after the last one trained
+  const cycle = days.filter(d => d.weekday === undefined); if (!cycle.length) return days[0].id;
+  const last = Object.keys(S.logs).filter(d => S.logs[d].day && cycle.some(x => x.id === S.logs[d].day)).sort().pop();
+  if (!last) return cycle[0].id;
+  const i = cycle.findIndex(d => d.id === S.logs[last].day);
+  return cycle[(i + 1) % cycle.length].id;
 }
 
 /* ---------- ui state ---------- */
@@ -196,7 +227,8 @@ function weekStrip() {
 function exerciseRow(e) {
   const l = liftLatest(e.name), t = (S.lifts[liftKey(e.name)] || {})[today()];
   const note = l ? `Last: ${l.kg} kg · ${shortDate(l.d)}` : 'No weight yet';
-  return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}</div>${e.sets ? `<div class="meta">${esc(e.sets)}</div>` : ''}<div class="meta liftnote">${esc(note)}</div></div>
+  if (e.cardio) return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}</div><div class="meta">${esc(e.sets)} · cardio</div></div></div>`;
+  return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}${e.shared ? ' <span class="chip tog">with Mo</span>' : ''}</div>${e.sets ? `<div class="meta">${esc(e.sets)}</div>` : ''}<div class="meta liftnote">${esc(note)}</div></div>
     <label class="kgbox"><input class="kginput" type="number" inputmode="decimal" step="0.5" min="0" max="999" data-lift="${esc(e.name)}" value="${t !== undefined ? t : (l ? l.kg : '')}" placeholder="–" aria-label="Weight in kg for ${esc(e.name)}"><span>kg</span></label></div>`;
 }
 function viewToday(v) {
@@ -242,7 +274,7 @@ function viewPlan(v) {
     <div class="actions" style="margin:0 0 14px"><button class="btn primary" data-act="newday">+ Add day</button><button class="btn" data-act="importplan">Paste plan</button></div>
     ${days.length ? days.map(d => `<div class="glass card"><div class="dayhead"><div class="grow"><b>${esc(d.name)}</b><div class="meta">${d.ex.length} exercises</div></div>
       <button class="btn small" data-act="editday" data-id="${d.id}">Edit</button></div>
-      ${d.ex.map(e => `<div class="exline"><div>${esc(e.name)}</div><span>${esc(e.sets)}</span></div>`).join('')}</div>`).join('')
+      ${d.ex.map(e => `<div class="exline"><div>${esc(e.name)}${e.shared ? ' <span class="chip tog">with Mo</span>' : ''}</div><span>${esc(e.sets)}</span></div>`).join('')}</div>`).join('')
       : '<div class="glass empty catcard">'+catSvg()+'No days yet. Tap + Add day, or paste a whole plan at once.</div>'}`;
 }
 function daySheet(d) {
@@ -384,7 +416,7 @@ const ACTIONS = {
     const name = $('#dname').value.trim(), ex = $('#dex').value.split(/\r?\n/).map(parseExercise).filter(Boolean);
     if (!name) { toast('Give the day a name'); return; }
     if (!ex.length) { toast('Add at least one exercise'); return; }
-    if (editId) { const d = S.plan.days.find(x => x.id === editId); d.name = name; d.ex = ex; }
+    if (editId) { const d = S.plan.days.find(x => x.id === editId); ex.forEach(e => { const o = d.ex.find(x => x.name.toLowerCase() === e.name.toLowerCase()); if (o) { if (o.shared) e.shared = true; if (o.cardio) e.cardio = true; } }); d.name = name; d.ex = ex; }
     else { const d = { id: uid(), name, ex }; S.plan.days.push(d); selDayId = d.id; }
     save(); closeSheet(); render(); toast('Saved');
   },
