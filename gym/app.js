@@ -2,7 +2,7 @@
 /* Gym: a small training log. All data lives in localStorage on this phone. */
 
 const KEY = 'gym-data-v1';
-const VERSION = '1.3';
+const VERSION = '1.4';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const WEEK_MILESTONES = [4, 8, 12, 26, 52];
 const TOTAL_MILESTONES = [10, 25, 50, 100, 200];
@@ -67,17 +67,17 @@ const STARTER_PLAN = [
   { name: 'Day 1 · Glutes + chest', ex: [
     { name: 'Hip thrust', sets: '4 × 8–12' }, { name: 'Romanian deadlift', sets: '3 × 10–12' },
     { name: 'Chest press (machine)', sets: '3 × 10–12', shared: true }, { name: 'Butterfly (machine)', sets: '3 × 12–15', shared: true },
-    { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true }, { name: 'Stairmaster', sets: '15–20 min', cardio: true }] },
+    { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true }, { name: 'Stairmaster (optional)', sets: '15–20 min if you feel like it', cardio: true, optional: true }] },
   { name: 'Day 2 · Thighs + back', ex: [
     { name: 'Leg press (feet high and wide)', sets: '4 × 10–12' }, { name: 'Leg extension', sets: '3 × 12–15' }, { name: 'Seated leg curl', sets: '3 × 12–15' },
     { name: 'Lat pull (machine)', sets: '3 × 10–12', shared: true }, { name: 'Seated row (machine)', sets: '3 × 10–12', shared: true },
     { name: 'Lat pulldown', sets: '3 × 10–12', shared: true }, { name: 'Biceps curl (machine)', sets: '2 × 12–15', shared: true },
-    { name: 'Stairmaster', sets: '15–20 min', cardio: true }] },
+    { name: 'Stairmaster (optional)', sets: '15–20 min if you feel like it', cardio: true, optional: true }] },
   { name: 'Day 3 · Glutes + shoulders', ex: [
     { name: 'Glute kickback (cable or machine)', sets: '3 × 12–15 per leg' }, { name: 'Hip abduction (machine)', sets: '3 × 15–20' }, { name: 'Walking lunges', sets: '3 × 12 per leg' },
     { name: 'Shoulder press (machine)', sets: '3 × 10–12', shared: true }, { name: 'Lateral raise (machine)', sets: '3 × 12–15', shared: true },
     { name: 'Reverse butterfly', sets: '3 × 12–15', shared: true }, { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true },
-    { name: 'Stairmaster', sets: '15–20 min', cardio: true }] },
+    { name: 'Stairmaster (optional)', sets: '15–20 min if you feel like it', cardio: true, optional: true }] },
   // fat-loss days: only on the days Mo trains something else (weekday 1 = Tue, 3 = Thu); not part of the 3-day cycle
   { name: 'Tuesday · Fat loss', weekday: 1, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
   { name: 'Thursday · Fat loss', weekday: 3, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
@@ -85,6 +85,10 @@ const STARTER_PLAN = [
 const starterDays = () => STARTER_PLAN.map(d => Object.assign({ id: uid() }, d, { ex: d.ex.map(e => Object.assign({}, e)) }));
 
 // first start: load the starter plan once
+if (S.settings.seeded && !S.settings.optCardio) {
+  S.plan.days.forEach(d => { if (d.weekday === undefined) d.ex.forEach(e => { if (e.cardio && e.name === 'Stairmaster' && e.sets === '15–20 min') { e.name = 'Stairmaster (optional)'; e.sets = '15–20 min if you feel like it'; e.optional = true; } }); });
+}
+S.settings.optCardio = true; if (S.settings.seeded) save();
 if (!S.settings.seeded) { if (!S.plan.days.length) S.plan.days = starterDays(); S.settings.seeded = true; save(); }
 
 /* ---------- plan parsing: paste text, get training days ---------- */
@@ -227,7 +231,7 @@ function weekStrip() {
 function exerciseRow(e) {
   const l = liftLatest(e.name), t = (S.lifts[liftKey(e.name)] || {})[today()];
   const note = l ? `Last: ${l.kg} kg · ${shortDate(l.d)}` : 'No weight yet';
-  if (e.cardio) return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}</div><div class="meta">${esc(e.sets)} · cardio</div></div></div>`;
+  if (e.cardio) return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}</div><div class="meta">${esc(e.sets)}${e.optional ? '' : ' · cardio'}</div></div></div>`;
   return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}${e.shared ? ' <span class="chip tog">with Mo</span>' : ''}</div>${e.sets ? `<div class="meta">${esc(e.sets)}</div>` : ''}<div class="meta liftnote">${esc(note)}</div></div>
     <label class="kgbox"><input class="kginput" type="number" inputmode="decimal" step="0.5" min="0" max="999" data-lift="${esc(e.name)}" value="${t !== undefined ? t : (l ? l.kg : '')}" placeholder="–" aria-label="Weight in kg for ${esc(e.name)}"><span>kg</span></label></div>`;
 }
@@ -416,7 +420,7 @@ const ACTIONS = {
     const name = $('#dname').value.trim(), ex = $('#dex').value.split(/\r?\n/).map(parseExercise).filter(Boolean);
     if (!name) { toast('Give the day a name'); return; }
     if (!ex.length) { toast('Add at least one exercise'); return; }
-    if (editId) { const d = S.plan.days.find(x => x.id === editId); ex.forEach(e => { const o = d.ex.find(x => x.name.toLowerCase() === e.name.toLowerCase()); if (o) { if (o.shared) e.shared = true; if (o.cardio) e.cardio = true; } }); d.name = name; d.ex = ex; }
+    if (editId) { const d = S.plan.days.find(x => x.id === editId); ex.forEach(e => { const o = d.ex.find(x => x.name.toLowerCase() === e.name.toLowerCase()); if (o) { if (o.shared) e.shared = true; if (o.cardio) e.cardio = true; if (o.optional) e.optional = true; } }); d.name = name; d.ex = ex; }
     else { const d = { id: uid(), name, ex }; S.plan.days.push(d); selDayId = d.id; }
     save(); closeSheet(); render(); toast('Saved');
   },
