@@ -2,7 +2,7 @@
 /* Gym: a small training log. All data lives in localStorage on this phone. */
 
 const KEY = 'gym-data-v1';
-const VERSION = '1.2';
+const VERSION = '1.3';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const WEEK_MILESTONES = [4, 8, 12, 26, 52];
 const TOTAL_MILESTONES = [10, 25, 50, 100, 200];
@@ -78,8 +78,11 @@ const STARTER_PLAN = [
     { name: 'Shoulder press (machine)', sets: '3 × 10–12', shared: true }, { name: 'Lateral raise (machine)', sets: '3 × 12–15', shared: true },
     { name: 'Reverse butterfly', sets: '3 × 12–15', shared: true }, { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true },
     { name: 'Stairmaster', sets: '15–20 min', cardio: true }] },
+  // fat-loss days: only on the days Mo trains something else (weekday 1 = Tue, 3 = Thu); not part of the 3-day cycle
+  { name: 'Tuesday · Fat loss', weekday: 1, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
+  { name: 'Thursday · Fat loss', weekday: 3, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
 ];
-const starterDays = () => STARTER_PLAN.map(d => ({ id: uid(), name: d.name, ex: d.ex.map(e => Object.assign({}, e)) }));
+const starterDays = () => STARTER_PLAN.map(d => Object.assign({ id: uid() }, d, { ex: d.ex.map(e => Object.assign({}, e)) }));
 
 // first start: load the starter plan once
 if (!S.settings.seeded) { if (!S.plan.days.length) S.plan.days = starterDays(); S.settings.seeded = true; save(); }
@@ -147,10 +150,14 @@ function streakInfo() {
 function suggestedDay() {
   const days = S.plan.days; if (!days.length) return null;
   const t = S.logs[today()]; if (t && t.day && days.some(d => d.id === t.day)) return t.day;
-  const last = Object.keys(S.logs).filter(d => S.logs[d].day && days.some(x => x.id === S.logs[d].day)).sort().pop();
-  if (!last) return days[0].id;
-  const i = days.findIndex(d => d.id === S.logs[last].day);
-  return days[(i + 1) % days.length].id;
+  // a day tied to a weekday (like the Tuesday fat-loss day) wins on that weekday
+  const wd = days.find(d => d.weekday === dowMon(today())); if (wd) return wd.id;
+  // otherwise the 3-day cycle goes on with the next day after the last one trained
+  const cycle = days.filter(d => d.weekday === undefined); if (!cycle.length) return days[0].id;
+  const last = Object.keys(S.logs).filter(d => S.logs[d].day && cycle.some(x => x.id === S.logs[d].day)).sort().pop();
+  if (!last) return cycle[0].id;
+  const i = cycle.findIndex(d => d.id === S.logs[last].day);
+  return cycle[(i + 1) % cycle.length].id;
 }
 
 /* ---------- ui state ---------- */
