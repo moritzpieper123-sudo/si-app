@@ -607,3 +607,5 @@ html[data-theme=dark],html[data-theme=dark] body{background:#14090f!important;co
 [data-theme=dark] .exline{border-top-color:rgba(255,160,200,.2)}
 [data-theme=dark] .lock,[data-theme=dark] #lock-root .lock{background:#14090f!important}
 [data-theme=dark] .mascot{filter:drop-shadow(0 0 8px rgba(255,160,200,.35))}
+.chip.tog{margin:0 0 0 6px;padding:2px 8px;font-size:10px;vertical-align:middle;background:var(--accent-soft);color:#d6487f;letter-spacing:.04em}
+[data-theme=dark] .chip.tog{color:#ff8fbc}
