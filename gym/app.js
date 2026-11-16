@@ -2,7 +2,7 @@
 /* Gym: a small training log. All data lives in localStorage on this phone. */
 
 const KEY = 'gym-data-v1';
-const VERSION = '1.4';
+const VERSION = '1.5';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const WEEK_MILESTONES = [4, 8, 12, 26, 52];
 const TOTAL_MILESTONES = [10, 25, 50, 100, 200];
@@ -62,22 +62,28 @@ function tone(freq = 660, dur = .12, vol = .05) {
 
 
 /* ---------- starter plan (3-day cycle, built around her goals and Mo's plan) ---------- */
-// shared: true = the same exercise Mo does that day, so they can train it together
+// Built slot by slot against Mo's plan: same number of exercises and sets per day, so nobody waits.
+// shared: true = the same exercise Mo does in that slot. mo = what Mo does in that slot when hers is different.
+const OPT = { name: 'Stairmaster (optional)', sets: '15–20 min if you feel like it', cardio: true, optional: true };
+const STARTER_VER = 2;
 const STARTER_PLAN = [
   { name: 'Day 1 · Glutes + chest', ex: [
-    { name: 'Hip thrust', sets: '4 × 8–12' }, { name: 'Romanian deadlift', sets: '3 × 10–12' },
-    { name: 'Chest press (machine)', sets: '3 × 10–12', shared: true }, { name: 'Butterfly (machine)', sets: '3 × 12–15', shared: true },
-    { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true }, { name: 'Stairmaster (optional)', sets: '15–20 min if you feel like it', cardio: true, optional: true }] },
+    { name: 'Chest press (machine)', sets: '3 × 10–12', shared: true },
+    { name: 'Hip thrust', sets: '3 × 8–12', mo: 'Incline chest press' },
+    { name: 'Romanian deadlift', sets: '3 × 10–12', mo: 'Butterfly (machine)' },
+    { name: 'Leg extension', sets: '3 × 12–15', mo: 'Dip machine' },
+    { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true }, OPT] },
   { name: 'Day 2 · Thighs + back', ex: [
-    { name: 'Leg press (feet high and wide)', sets: '4 × 10–12' }, { name: 'Leg extension', sets: '3 × 12–15' }, { name: 'Seated leg curl', sets: '3 × 12–15' },
-    { name: 'Lat pull (machine)', sets: '3 × 10–12', shared: true }, { name: 'Seated row (machine)', sets: '3 × 10–12', shared: true },
-    { name: 'Lat pulldown', sets: '3 × 10–12', shared: true }, { name: 'Biceps curl (machine)', sets: '2 × 12–15', shared: true },
-    { name: 'Stairmaster (optional)', sets: '15–20 min if you feel like it', cardio: true, optional: true }] },
+    { name: 'Lat pull (machine)', sets: '3 × 10–12', shared: true },
+    { name: 'Seated row (machine)', sets: '3 × 10–12', shared: true },
+    { name: 'Leg press (feet high and wide)', sets: '3 × 10–12', mo: 'Lat pulldown' },
+    { name: 'Biceps curl (machine)', sets: '3 × 12–15', shared: true }, OPT] },
   { name: 'Day 3 · Glutes + shoulders', ex: [
-    { name: 'Glute kickback (cable or machine)', sets: '3 × 12–15 per leg' }, { name: 'Hip abduction (machine)', sets: '3 × 15–20' }, { name: 'Walking lunges', sets: '3 × 12 per leg' },
-    { name: 'Shoulder press (machine)', sets: '3 × 10–12', shared: true }, { name: 'Lateral raise (machine)', sets: '3 × 12–15', shared: true },
-    { name: 'Reverse butterfly', sets: '3 × 12–15', shared: true }, { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true },
-    { name: 'Stairmaster (optional)', sets: '15–20 min if you feel like it', cardio: true, optional: true }] },
+    { name: 'Glute kickback (cable or machine)', sets: '3 × 12–15 per leg', mo: 'Shoulder press (machine)' },
+    { name: 'Lateral raise (machine)', sets: '3 × 12–15', shared: true },
+    { name: 'Reverse butterfly', sets: '3 × 12–15', shared: true },
+    { name: 'Walking lunges', sets: '3 × 12 per leg', mo: 'Torso rotation' },
+    { name: 'Abdominal press (machine)', sets: '3 × 12–15', shared: true }, OPT] },
   // fat-loss days: only on the days Mo trains something else (weekday 1 = Tue, 3 = Thu); not part of the 3-day cycle
   { name: 'Tuesday · Fat loss', weekday: 1, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
   { name: 'Thursday · Fat loss', weekday: 3, ex: [{ name: 'Stairmaster', sets: '30–40 min, steady pace', cardio: true }] },
@@ -85,11 +91,17 @@ const STARTER_PLAN = [
 const starterDays = () => STARTER_PLAN.map(d => Object.assign({ id: uid() }, d, { ex: d.ex.map(e => Object.assign({}, e)) }));
 
 // first start: load the starter plan once
-if (S.settings.seeded && !S.settings.optCardio) {
-  S.plan.days.forEach(d => { if (d.weekday === undefined) d.ex.forEach(e => { if (e.cardio && e.name === 'Stairmaster' && e.sets === '15–20 min') { e.name = 'Stairmaster (optional)'; e.sets = '15–20 min if you feel like it'; e.optional = true; } }); });
+if (!S.settings.seeded) { if (!S.plan.days.length) S.plan.days = starterDays(); S.settings.seeded = true; S.settings.planVer = STARTER_VER; save(); }
+// phones that loaded an older starter plan: swap in the balanced cycle days once (Tue/Thu days and logged weights stay)
+if ((S.settings.planVer || 1) < STARTER_VER) {
+  const OLD = ['Day 1 · Glutes + chest', 'Day 2 · Thighs + back', 'Day 3 · Glutes + shoulders'];
+  const cyc = S.plan.days.filter(d => d.weekday === undefined);
+  if (cyc.length === 3 && cyc.every((d, i) => d.name === OLD[i])) {
+    const fresh = starterDays();
+    S.plan.days = S.plan.days.map(d => { const k = OLD.indexOf(d.name); return d.weekday === undefined && k >= 0 ? Object.assign(fresh[k], { id: d.id }) : d; });
+  }
+  S.settings.planVer = STARTER_VER; save();
 }
-S.settings.optCardio = true; if (S.settings.seeded) save();
-if (!S.settings.seeded) { if (!S.plan.days.length) S.plan.days = starterDays(); S.settings.seeded = true; save(); }
 
 /* ---------- plan parsing: paste text, get training days ---------- */
 const SETS_END = /(\d+\s*[x×*]\s*\d+(?:\s*[-–]\s*\d+)?\s*(?:reps?|wdh\.?|kg)?|\d+\s*(?:sets?|sätze|saetze)\b.*)\s*$/i;
@@ -232,7 +244,7 @@ function exerciseRow(e) {
   const l = liftLatest(e.name), t = (S.lifts[liftKey(e.name)] || {})[today()];
   const note = l ? `Last: ${l.kg} kg · ${shortDate(l.d)}` : 'No weight yet';
   if (e.cardio) return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}</div><div class="meta">${esc(e.sets)}${e.optional ? '' : ' · cardio'}</div></div></div>`;
-  return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}${e.shared ? ' <span class="chip tog">with Mo</span>' : ''}</div>${e.sets ? `<div class="meta">${esc(e.sets)}</div>` : ''}<div class="meta liftnote">${esc(note)}</div></div>
+  return `<div class="exrow"><span class="exdot"></span><div class="grow"><div class="name">${esc(e.name)}${e.shared ? ' <span class="chip tog">with Mo</span>' : ''}</div>${e.sets ? `<div class="meta">${esc(e.sets)}</div>` : ''}${e.mo ? `<div class="meta">Mo: ${esc(e.mo)}</div>` : ''}<div class="meta liftnote">${esc(note)}</div></div>
     <label class="kgbox"><input class="kginput" type="number" inputmode="decimal" step="0.5" min="0" max="999" data-lift="${esc(e.name)}" value="${t !== undefined ? t : (l ? l.kg : '')}" placeholder="–" aria-label="Weight in kg for ${esc(e.name)}"><span>kg</span></label></div>`;
 }
 function viewToday(v) {
@@ -420,7 +432,7 @@ const ACTIONS = {
     const name = $('#dname').value.trim(), ex = $('#dex').value.split(/\r?\n/).map(parseExercise).filter(Boolean);
     if (!name) { toast('Give the day a name'); return; }
     if (!ex.length) { toast('Add at least one exercise'); return; }
-    if (editId) { const d = S.plan.days.find(x => x.id === editId); ex.forEach(e => { const o = d.ex.find(x => x.name.toLowerCase() === e.name.toLowerCase()); if (o) { if (o.shared) e.shared = true; if (o.cardio) e.cardio = true; if (o.optional) e.optional = true; } }); d.name = name; d.ex = ex; }
+    if (editId) { const d = S.plan.days.find(x => x.id === editId); ex.forEach(e => { const o = d.ex.find(x => x.name.toLowerCase() === e.name.toLowerCase()); if (o) { if (o.shared) e.shared = true; if (o.cardio) e.cardio = true; if (o.optional) e.optional = true; if (o.mo) e.mo = o.mo; } }); d.name = name; d.ex = ex; }
     else { const d = { id: uid(), name, ex }; S.plan.days.push(d); selDayId = d.id; }
     save(); closeSheet(); render(); toast('Saved');
   },
